@@ -1,0 +1,4 @@
+channels:
+  - bioconda
+dependencies:
+  - snakemake=5.19.0-0
