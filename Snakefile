@@ -10,6 +10,135 @@ rule mt_sam_to_bam:
     conda: "envs/samtools.yaml"
     shell: "samtools view -S -b {input} > {output}"
 
+
+
+################################################################################
+########################### Sudanese MT sequencing files #######################
+################################################################################
+
+rule get_indv_pop_sudan:
+    input: "data/raw_sudanese/SUDAN_populations_individuals.txt"
+    output: "SUDAN2020/populations_individuals.txt"
+    shell: "cp {input} {output}"
+
+INDIVIDUALS_SUDAN = []
+POPULATION_SUDAN = {}
+with open("SUDAN2020/populations_individuals.txt","r") as f_in:
+    for line in f_in:
+        pop,indv = line.strip().split("\t")
+        # Three individuals have so little reads that haplogroups cannot be 
+        # computed (2, 14, 2 reads)
+        if not indv in ["Psor-092_S15","Psor-028_S13","Psor-102_S25"]:
+            INDIVIDUALS_SUDAN.append(indv)
+            POPULATION_SUDAN[indv] = pop
+
+rule fastqc:
+    input: "data/raw_sudanese/{sample}_L001_{mate}_001.fastq.gz"
+    output: "fastqc/{sample}_L001_{mate}_001_fastqc.html"
+    conda: "envs/fastqc.yaml"
+    shell: "fastqc --extract --outdir=fastqc/ {input}"
+    
+rule fastqc_all:
+    input: expand("fastqc/{sample}_L001_{mate}_001_fastqc.html",sample=INDIVIDUALS_SUDAN,mate=["R1","R2"])
+
+rule fastqc_summary:
+    input: expand("fastqc/{sample}_L001_{mate}_001_fastqc/summary.txt",sample=INDIVIDUALS_SUDAN,mate=["R1","R2"])
+    output: "fastqc/fastqc_summary.txt"
+    run:
+        with open(output[0],"w") as f_out:
+            header = ["","Basic Statistics","Per base sequence quality",\
+            "Per tile sequence quality","Per sequence quality scores", \
+            "Per base sequence content","Per sequence GC content", \
+            "Per base N content","Sequence Length Distribution", \
+            "Sequence Duplication Levels","Overrepresented sequences", \
+            "Adapter Content"]
+            f_out.write("\t".join(header)+"\n")
+            for filename in input:
+                f_out.write(filename.split("/")[1]+"\t")
+                with open(filename,"r") as f_in:
+                    i = 0
+                    for line in f_in:
+                        if i<10:
+                            f_out.write(line.split("\t")[0]+"\t")
+                            i += 1
+                        else:
+                            f_out.write(line.split("\t")[0]+"\n")
+                           
+
+rule get_mt_reference:
+    output: "ref/Homo_sapiens.GRCh38.dna.chromosome.MT.fa.gz"
+    shell: "wget -P ref ftp://ftp.ensembl.org/pub/release-101/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.chromosome.MT.fa.gz"
+
+# Mapping to reference/assembly using bwa
+rule bwa_index:
+    input: "ref/Homo_sapiens.GRCh38.dna.chromosome.MT.fa.gz"
+    output: "bwa_index/Homo_sapiens.GRCh38.dna.chromosome.MT.sa"
+    conda: "envs/bwa.yaml"
+    shell: "bwa index -p bwa_index/Homo_sapiens.GRCh38.dna.chromosome.MT {input}"
+
+rule bwa_mem:
+    input: index = "bwa_index/Homo_sapiens.GRCh38.dna.chromosome.MT.sa",
+           fastq_r1 = "data/raw_sudanese/{sample}_L001_R1_001.fastq.gz",
+           fastq_r2 = "data/raw_sudanese/{sample}_L001_R2_001.fastq.gz",
+    output: "SUDAN2020/mapped/{sample}.sam"
+    conda: "envs/bwa.yaml"
+    shell: "bwa mem -t 8 " + \
+           "bwa_index/Homo_sapiens.GRCh38.dna.chromosome.MT " + \
+           "{input.fastq_r1} {input.fastq_r2} > {output}"
+
+rule samtools_sort_to_bam:
+    input: "SUDAN2020/mapped/{sample}.sam"
+    output: "SUDAN2020/mapped/{sample}.bam"
+    conda: "envs/samtools.yaml"
+    shell: "samtools sort -O BAM {input} > {output}"
+
+rule samtools_stats:
+    input: "SUDAN2020/mapped/{sample}.bam"
+    output: "SUDAN2020/mapped/{sample}.stats"
+    conda: "envs/samtools.yaml"
+    shell: "samtools stats {input} > {output}"
+
+rule mapping_stats_all:
+    input: expand("SUDAN2020/mapped/{sample}.stats",sample=INDIVIDUALS_SUDAN)
+
+rule prepare_sudan:
+    input: "SUDAN2020/mapped/{sample}.bam"
+    output: "SUDAN2020/Sudanese/{sample}_mt.sam"
+    shell: "samtools view -h {input} > {output}"
+
+rule summarize_mapping_stats:
+    input: expand("SUDAN2020/mapped/{sample}.stats", sample=INDIVIDUALS_SUDAN)
+    output: "SUDAN2020/mapped/summary.stats"
+    run:
+        with open(output[0],"w") as f_out:
+            f_out.write("sample\treads\treads_mapped\tbases_mapped\taverage_length\tapprox_mt_coverage\n")
+            for filename in input:
+                with open(filename,"r") as f_in:
+                    f_out.write(filename.split("/")[-1].split(".")[0]+"\t")
+                    for line in f_in:
+                        if line[:13] == "SN\tsequences:":
+                            f_out.write(line.strip("\n").split("\t")[2]+"\t")
+                        if line[:16] == "SN\treads mapped:":
+                            f_out.write(line.strip("\n").split("\t")[2]+"\t")     
+                        if line[:16] == "SN\tbases mapped:":
+                            bases_mapped = line.strip("\n").split("\t")[2]
+                            f_out.write(bases_mapped+"\t")
+                        if line[:18] == "SN\taverage length:":
+                            f_out.write(line.strip("\n").split("\t")[2]+"\t") 
+                    f_out.write(str(round(int(bases_mapped)/16569,3))+"\n")
+
+rule get_coverage:
+    input: "SUDAN2020/mapped/{sample}.stats"
+    output: "SUDAN2020/mapped/{sample}.cov"
+    shell: "cat {input} | grep ^COV | cut -f 2- > {output}"
+
+rule get_coverage_all:
+    input: expand("SUDAN2020/mapped/{sample}.cov",sample=INDIVIDUALS_SUDAN)
+
+rule prepare_sudan_mt_all:
+     input: expand("SUDAN2020/Sudanese/{individual}_mt.sam", \
+            individual=INDIVIDUALS_SUDAN)
+
 ################################################################################
 ####################### Bergstroem MT reads from bam files #####################
 ################################################################################
@@ -154,6 +283,9 @@ rule download_1000g_mt_all:
 rule run_haplocheck:
     input: "{dataset}/{population}/{individual}_mt.bam"
     output: "haplocheck/results/{dataset}_{population}_{individual}/haplogroups/haplogroups.txt"
+    wildcard_constraints: 
+        dataset="[A-Z,0-9]+",
+        population="[A-Z,a-z]+"
     params: prefix=lambda wildcards, output: "/".join(output[0].split("/")[1:-2])
     shell: "./haplocheck/cloudgene run haplocheck@1.1.2 " + \
                                             "--files ../{input} " +\
@@ -171,6 +303,10 @@ rule run_haplocheck_bergstroem:
                     individual=INDIVIDUALS_HGDP, \
                     population=[POPULATION_HGDP[indv] for indv in INDIVIDUALS_HGDP])
 
+rule run_haplocheck_sudan:
+    input: expand("haplocheck/results/SUDAN2020_Sudanese_{individual}/haplogroups/haplogroups.txt", \
+                    individual=INDIVIDUALS_SUDAN)
+
 rule combined_haplogroup_file:
     input: expand("haplocheck/results/1000G_{population}_{individual}/haplogroups/haplogroups.txt", \
                     zip, \
@@ -179,11 +315,29 @@ rule combined_haplogroup_file:
            expand("haplocheck/results/BERGSTROEM2020_{population}_{individual}/haplogroups/haplogroups.txt", \
                     zip, \
                     individual=INDIVIDUALS_HGDP, \
-                    population=[POPULATION_HGDP[indv] for indv in INDIVIDUALS_HGDP]) 
+                    population=[POPULATION_HGDP[indv] for indv in INDIVIDUALS_HGDP]),
+           expand("haplocheck/results/SUDAN2020_Sudanese_{individual}/haplogroups/haplogroups.txt", \
+                    individual=INDIVIDUALS_SUDAN) 
     output: "haplocheck/results/all_haplogroups.txt"
     shell: "cat {input[0]} | head -n 1 > {output}; " + \
             "cat haplocheck/results/*/haplogroups/haplogroups.txt | " + \
             "grep -v SampleID >> {output} " 
+
+rule combined_sudan_haplogroup_file:
+    input: expand("haplocheck/results/SUDAN2020_Sudanese_{individual}/haplogroups/haplogroups.txt", \
+                    individual=INDIVIDUALS_SUDAN) 
+    output: "haplocheck/results/sudan_haplogroups.txt"
+    shell: "cat {input[0]} | head -n 1 > {output}; " + \
+            "cat haplocheck/results/SUDAN2020*/haplogroups/haplogroups.txt | " + \
+            "grep -v SampleID >> {output} " 
+
+rule combined_sudan_contamination_file:
+    input: expand("haplocheck/results/SUDAN2020_Sudanese_{individual}/contamination/contamination.txt", \
+                    individual=INDIVIDUALS_SUDAN) 
+    output: "haplocheck/results/sudan_contaminations.txt"
+    shell: "cat {input[0]} | head -n 1 > {output}; " + \
+            "cat haplocheck/results/SUDAN2020*/contamination/contamination.txt | " + \
+            "grep -v Sample >> {output} " 
 
 
 
