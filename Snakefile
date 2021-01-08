@@ -11,6 +11,76 @@ rule mt_sam_to_bam:
     shell: "samtools view -S -b {input} > {output}"
 
 
+################################################################################
+####################### Generation of Egyptian MT Bam files ####################
+################################################################################
+
+INDIVIDUALS_WOHLERS2020 = []
+POPULATION_WOHLERS2020 = {}
+with open("data/egyptian_samplenames.txt","r") as f_in:
+    for line in f_in:
+        indv = line.strip("\n")
+        INDIVIDUALS_WOHLERS2020.append(indv)
+        POPULATION_WOHLERS2020[indv] = "Egyptian"
+
+rule link_egyptian_bams:
+    input: "/data/lied_egypt_genome/output_wgs/{sample}/{sample}.merged.mark_dups.bam",
+           "/data/lied_egypt_genome/output_wgs/{sample}/{sample}.merged.mark_dups.bam.bai",
+    output: "WOHLERS2020/Egyptian/{sample}.merged.mark_dups.bam",
+            "WOHLERS2020/Egyptian/{sample}.merged.mark_dups.bam.bai"
+    shell: "ln -s {input[0]} {output[0]}; ln -s {input[1]} {output[1]};"
+
+rule get_egyptian_mt_reads:
+    input: "WOHLERS2020/Egyptian/{sample}.merged.mark_dups.bam",
+           "WOHLERS2020/Egyptian/{sample}.merged.mark_dups.bam.bai"
+    output: "WOHLERS2020/Egyptian/{sample}_mt.sam"
+    conda: "envs/samtools.yaml"
+    shell: "samtools view -h {input[0]} chrM > {output}"
+
+#"samtools view -h http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/HGDP/data/{wildcards.population}/{wildcards.individual}/alignment/{wildcards.individual}.alt_bwamem_GRCh38DH.20181023.{wildcards.population}.cram chrM > BERGSTROEM2020/{wildcards.population}/{wildcards.individual}_mt.sam
+
+################################################################################
+####################### Schuenemann Mummy Bam files ############################
+################################################################################
+
+# Get the tsv file with sample IDs and name: 
+# filereport_read_run_PRJEB15464_tsv.txt downloaded from 
+# https://www.ebi.ac.uk/ena/portal/api/filereport?accession=PRJEB15464&result=read_run&fields=study_accession,sample_accession,experiment_accession,run_accession,tax_id,scientific_name,fastq_ftp,submitted_ftp,sra_ftp&format=tsv&download=true
+rule cp_ena_meta_file:
+    input:  "data/filereport_read_run_PRJEB15464_tsv.txt"
+    output: "SCHUENEMANN2017/filereport_read_run_PRJEB15464_tsv.txt"
+    shell: "cp {input} {output}"
+
+INDIVIDUALS_SCHUENEMANN2017 = []
+POPULATION_SCHUENEMANN2017 = {}
+SCHUENEMANN2017_INDIVIDUALS_TO_BAM = {}
+with open("data/filereport_read_run_PRJEB15464_tsv.txt","r") as f_in:
+    for line in f_in:
+        if line[:5] == "study":
+            continue
+        indv = line.split("\t")[7].split("/")[10].split("_")[0]
+        indv2 = line.split("\t")[7].split("/")[10].split(".")[0]
+        if len(indv2) < len(indv):
+            indv = indv2
+        bam = line.split("\t")[7].split(";")[0]
+        SCHUENEMANN2017_INDIVIDUALS_TO_BAM[indv] = bam
+        INDIVIDUALS_SCHUENEMANN2017.append(indv)
+        POPULATION_SCHUENEMANN2017[indv] = "AncientEgyptian"
+
+INDIVIDUALS_SCHUENEMANN2017 = [x for x in INDIVIDUALS_SCHUENEMANN2017 if not x=="JK2911udg"]
+
+# Download the BAMs from ENA
+rule download_schuenemann_bam:
+    output: "SCHUENEMANN2017/AncientEgyptian/{sample}_mt.bam",
+            "SCHUENEMANN2017/AncientEgyptian/{sample}_mt.bam.bai"
+    params: link=lambda wildcards: SCHUENEMANN2017_INDIVIDUALS_TO_BAM[wildcards.sample]
+    shell: "wget -P SCHUENEMANN2017 -O {output[0]} ftp://{params.link}; " + \
+           "wget -P SCHUENEMANN2017 -O {output[1]} ftp://{params.link}.bai"
+
+# Download the BAMs from ENA
+rule download_schuenemann_bam_all:
+    input: expand("SCHUENEMANN2017/AncientEgyptian/{sample}_mt.bam.bai",sample=INDIVIDUALS_SCHUENEMANN2017)
+
 
 ################################################################################
 ########################### Sudanese MT sequencing files #######################
@@ -282,7 +352,8 @@ rule download_1000g_mt_all:
 
 rule run_haplocheck:
     input: "{dataset}/{population}/{individual}_mt.bam"
-    output: "haplocheck/results/{dataset}_{population}_{individual}/haplogroups/haplogroups.txt"
+    output: "haplocheck/results/{dataset}_{population}_{individual}/haplogroups/haplogroups.txt",
+            "haplocheck/results/{dataset}_{population}_{individual}/contamination/contamination.txt"
     wildcard_constraints: 
         dataset="[A-Z,0-9]+",
         population="[A-Z,a-z]+"
@@ -337,6 +408,38 @@ rule combined_sudan_contamination_file:
     output: "haplocheck/results/sudan_contaminations.txt"
     shell: "cat {input[0]} | head -n 1 > {output}; " + \
             "cat haplocheck/results/SUDAN2020*/contamination/contamination.txt | " + \
+            "grep -v Sample >> {output} " 
+
+rule combined_schuenemann_haplogroup_file:
+    input: expand("haplocheck/results/SCHUENEMANN2017_AncientEgyptian_{individual}/haplogroups/haplogroups.txt", \
+                    individual=INDIVIDUALS_SCHUENEMANN2017) 
+    output: "haplocheck/results/schuenemann_haplogroups.txt"
+    shell: "cat {input[0]} | head -n 1 > {output}; " + \
+            "cat haplocheck/results/SCHUENEMANN2017*/haplogroups/haplogroups.txt | " + \
+            "grep -v SampleID >> {output} " 
+
+rule combined_schuenemann_contamination_file:
+    input: expand("haplocheck/results/SCHUENEMANN2017_AncientEgyptian_{individual}/contamination/contamination.txt", \
+                    individual=INDIVIDUALS_SCHUENEMANN2017) 
+    output: "haplocheck/results/schuenemann_contaminations.txt"
+    shell: "cat {input[0]} | head -n 1 > {output}; " + \
+            "cat haplocheck/results/SCHUENEMANN2017*/contamination/contamination.txt | " + \
+            "grep -v Sample >> {output} " 
+
+rule combined_wohlers_haplogroup_file:
+    input: expand("haplocheck/results/WOHLERS2020_Egyptian_{individual}/haplogroups/haplogroups.txt", \
+                    individual=INDIVIDUALS_WOHLERS2020) 
+    output: "haplocheck/results/wohlers_haplogroups.txt"
+    shell: "cat {input[0]} | head -n 1 > {output}; " + \
+            "cat haplocheck/results/WOHLERS2020*/haplogroups/haplogroups.txt | " + \
+            "grep -v SampleID >> {output} " 
+
+rule combined_wohlers_contamination_file:
+    input: expand("haplocheck/results/WOHLERS2020_Egyptian_{individual}/contamination/contamination.txt", \
+                    individual=INDIVIDUALS_WOHLERS2020) 
+    output: "haplocheck/results/wohlers_contaminations.txt"
+    shell: "cat {input[0]} | head -n 1 > {output}; " + \
+            "cat haplocheck/results/WOHLERS2020*/contamination/contamination.txt | " + \
             "grep -v Sample >> {output} " 
 
 
