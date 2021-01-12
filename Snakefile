@@ -12,6 +12,79 @@ rule mt_sam_to_bam:
 
 
 ################################################################################
+######### Generation of Egyptian MT Bam files from MT sequencing ###############
+################################################################################
+
+rule get_indv_pop_egypt:
+    input: "data/raw_egyptian/EGYPT_populations_individuals.txt"
+    output: "EGYPT2020/populations_individuals.txt"
+    shell: "cp {input} {output}"
+
+INDIVIDUALS_EGYPT2020 = []
+POPULATION_EGYPT2020 = {}
+with open("EGYPT2020/populations_individuals.txt","r") as f_in:
+    for line in f_in:
+        pop,indv = line.strip().split("\t")
+        # Three individuals have so little reads that haplogroups cannot be 
+        # computed (2, 14, 2 reads)
+        INDIVIDUALS_EGYPT2020.append(indv)
+        POPULATION_EGYPT2020[indv] = pop
+
+rule cp_bam_egypt:
+    input: "data/raw_egyptian/{sample}out_realigned.bam"
+    output: "EGYPT2020/mapped/{sample}.bam"
+    shell: "cp {input} {output}"
+
+rule samtools_stats_egypt:
+    input: "EGYPT2020/mapped/{sample}.bam"
+    output: "EGYPT2020/mapped/{sample}.stats"
+    conda: "envs/samtools.yaml"
+    shell: "samtools stats {input} > {output}"
+
+rule mapping_stats_egypt_all:
+    input: expand("EGYPT2020/mapped/{sample}.stats",sample=INDIVIDUALS_EGYPT2020)
+
+rule prepare_egypt:
+    input: "EGYPT2020/mapped/{sample}.bam"
+    output: "EGYPT2020/Egyptian/{sample}_mt.sam"
+    shell: "samtools view -h {input} > {output}"
+
+rule summarize_mapping_stats_egypt:
+    input: expand("EGYPT2020/mapped/{sample}.stats", sample=INDIVIDUALS_EGYPT2020)
+    output: "EGYPT2020/mapped/summary.stats"
+    run:
+        with open(output[0],"w") as f_out:
+            f_out.write("sample\treads\treads_mapped\tbases_mapped\taverage_length\tapprox_mt_coverage\n")
+            for filename in input:
+                with open(filename,"r") as f_in:
+                    f_out.write(filename.split("/")[-1].split(".")[0]+"\t")
+                    for line in f_in:
+                        if line[:13] == "SN\tsequences:":
+                            f_out.write(line.strip("\n").split("\t")[2]+"\t")
+                        if line[:16] == "SN\treads mapped:":
+                            f_out.write(line.strip("\n").split("\t")[2]+"\t")     
+                        if line[:16] == "SN\tbases mapped:":
+                            bases_mapped = line.strip("\n").split("\t")[2]
+                            f_out.write(bases_mapped+"\t")
+                        if line[:18] == "SN\taverage length:":
+                            f_out.write(line.strip("\n").split("\t")[2]+"\t") 
+                    f_out.write(str(round(int(bases_mapped)/16569,3))+"\n")
+
+rule get_coverage_egypt:
+    input: "EGYPT2020/mapped/{sample}.stats"
+    output: "EGYPT2020/mapped/{sample}.cov"
+    shell: "cat {input} | grep ^COV | cut -f 2- > {output}"
+
+rule get_coverage_egypt_all:
+    input: expand("EGYPT2020/mapped/{sample}.cov",sample=INDIVIDUALS_EGYPT2020)
+
+rule prepare_egypt_mt_all:
+     input: expand("EGYPT2020/Egyptian/{individual}_mt.sam", \
+            individual=INDIVIDUALS_EGYPT2020)
+
+
+
+################################################################################
 ####################### Generation of Egyptian MT Bam files ####################
 ################################################################################
 
@@ -442,5 +515,20 @@ rule combined_wohlers_contamination_file:
             "cat haplocheck/results/WOHLERS2020*/contamination/contamination.txt | " + \
             "grep -v Sample >> {output} " 
 
+rule combined_egypt_haplogroup_file:
+    input: expand("haplocheck/results/EGYPT2020_Egyptian_{individual}/haplogroups/haplogroups.txt", \
+                    individual=INDIVIDUALS_EGYPT2020) 
+    output: "haplocheck/results/egypt_haplogroups.txt"
+    shell: "cat {input[0]} | head -n 1 > {output}; " + \
+            "cat haplocheck/results/EGYPT2020*/haplogroups/haplogroups.txt | " + \
+            "grep -v SampleID >> {output} " 
+
+rule combined_egypt_contamination_file:
+    input: expand("haplocheck/results/EGYPT2020_Egyptian_{individual}/contamination/contamination.txt", \
+                    individual=INDIVIDUALS_EGYPT2020) 
+    output: "haplocheck/results/egypt_contaminations.txt"
+    shell: "cat {input[0]} | head -n 1 > {output}; " + \
+            "cat haplocheck/results/EGYPT2020*/contamination/contamination.txt | " + \
+            "grep -v Sample >> {output} " 
 
 

@@ -9,4 +9,4 @@ source activate workflow_2020_population_genetics
 
 echo "RUNNING SNAKEMAKE WORKFLOW..."
 
-snakemake --rerun-incomplete -p --use-conda combined_wohlers_haplogroup_file combined_wohlers_contamination_file
+snakemake --rerun-incomplete -p --use-conda combined_egypt_haplogroup_file combined_egypt_contamination_file
