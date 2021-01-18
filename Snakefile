@@ -20,20 +20,66 @@ rule get_indv_pop_egypt:
     output: "EGYPT2020/populations_individuals.txt"
     shell: "cp {input} {output}"
 
+# Egyptian	EGY2012_Moh_248_S100 excluded, because R2 fastq file missing
 INDIVIDUALS_EGYPT2020 = []
 POPULATION_EGYPT2020 = {}
 with open("EGYPT2020/populations_individuals.txt","r") as f_in:
     for line in f_in:
-        pop,indv = line.strip().split("\t")
+        pop,indv = line.strip("\n").split("\t")
         # Three individuals have so little reads that haplogroups cannot be 
         # computed (2, 14, 2 reads)
-        INDIVIDUALS_EGYPT2020.append(indv)
-        POPULATION_EGYPT2020[indv] = pop
+        if not indv == "EGY2012_Moh_248_S100":
+            INDIVIDUALS_EGYPT2020.append(indv)
+            POPULATION_EGYPT2020[indv] = pop
 
-rule cp_bam_egypt:
-    input: "data/raw_egyptian/{sample}out_realigned.bam"
+rule fastqc_egyptian:
+    input: "data/raw_egyptian/{sample}_L001_{mate}_001.fastq.gz"
+    output: "fastqc_egyptian/{sample}_L001_{mate}_001_fastqc.html",
+            "fastqc_egyptian/{sample}_L001_{mate}_001_fastqc/summary.txt"
+    conda: "envs/fastqc.yaml"
+    shell: "fastqc --extract --outdir=fastqc_egyptian/ {input}"
+    
+rule fastqc_egyptian_all:
+    input: expand("fastqc_egyptian/{sample}_L001_{mate}_001_fastqc.html",sample=INDIVIDUALS_EGYPT2020,mate=["R1","R2"])
+
+rule fastqc_egyptian_summary:
+    input: expand("fastqc_egyptian/{sample}_L001_{mate}_001_fastqc/summary.txt",sample=INDIVIDUALS_EGYPT2020,mate=["R1","R2"])
+    output: "fastqc_egyptian/fastqc_summary.txt"
+    run:
+        with open(output[0],"w") as f_out:
+            header = ["","Basic Statistics","Per base sequence quality",\
+            "Per tile sequence quality","Per sequence quality scores", \
+            "Per base sequence content","Per sequence GC content", \
+            "Per base N content","Sequence Length Distribution", \
+            "Sequence Duplication Levels","Overrepresented sequences", \
+            "Adapter Content"]
+            f_out.write("\t".join(header)+"\n")
+            for filename in input:
+                f_out.write(filename.split("/")[1]+"\t")
+                with open(filename,"r") as f_in:
+                    i = 0
+                    for line in f_in:
+                        if i<10:
+                            f_out.write(line.split("\t")[0]+"\t")
+                            i += 1
+                        else:
+                            f_out.write(line.split("\t")[0]+"\n")
+
+rule bwa_mem_egypt:
+    input: index = "bwa_index/Homo_sapiens.GRCh38.dna.chromosome.MT.sa",
+           fastq_r1 = "data/raw_egyptian/{sample}_L001_R1_001.fastq.gz",
+           fastq_r2 = "data/raw_egyptian/{sample}_L001_R2_001.fastq.gz",
+    output: "EGYPT2020/mapped/{sample}.sam"
+    conda: "envs/bwa.yaml"
+    shell: "bwa mem -t 8 " + \
+           "bwa_index/Homo_sapiens.GRCh38.dna.chromosome.MT " + \
+           "{input.fastq_r1} {input.fastq_r2} > {output}"
+
+rule samtools_sort_to_bam_egypt:
+    input: "EGYPT2020/mapped/{sample}.sam"
     output: "EGYPT2020/mapped/{sample}.bam"
-    shell: "cp {input} {output}"
+    conda: "envs/samtools.yaml"
+    shell: "samtools sort -O BAM {input} > {output}"
 
 rule samtools_stats_egypt:
     input: "EGYPT2020/mapped/{sample}.bam"
@@ -77,11 +123,6 @@ rule get_coverage_egypt:
 
 rule get_coverage_egypt_all:
     input: expand("EGYPT2020/mapped/{sample}.cov",sample=INDIVIDUALS_EGYPT2020)
-
-rule prepare_egypt_mt_all:
-     input: expand("EGYPT2020/Egyptian/{individual}_mt.sam", \
-            individual=INDIVIDUALS_EGYPT2020)
-
 
 
 ################################################################################
@@ -177,7 +218,8 @@ with open("SUDAN2020/populations_individuals.txt","r") as f_in:
 
 rule fastqc:
     input: "data/raw_sudanese/{sample}_L001_{mate}_001.fastq.gz"
-    output: "fastqc/{sample}_L001_{mate}_001_fastqc.html"
+    output: "fastqc/{sample}_L001_{mate}_001_fastqc.html",
+            "fastqc/{sample}_L001_{mate}_001_fastqc/summary.txt"
     conda: "envs/fastqc.yaml"
     shell: "fastqc --extract --outdir=fastqc/ {input}"
     
