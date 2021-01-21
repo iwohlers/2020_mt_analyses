@@ -10,6 +10,12 @@ rule mt_sam_to_bam:
     conda: "envs/samtools.yaml"
     shell: "samtools view -S -b {input} > {output}"
 
+rule index_bam:
+    input: "{dataset}/{population}/{individual}_mt.bam"
+    output: "{dataset}/{population}/{individual}_mt.bam.bai"
+    conda: "envs/samtools.yaml"
+    shell: "samtools index {input}"
+
 
 ################################################################################
 ######### Generation of Egyptian MT Bam files from MT sequencing ###############
@@ -20,17 +26,13 @@ rule get_indv_pop_egypt:
     output: "EGYPT2020/populations_individuals.txt"
     shell: "cp {input} {output}"
 
-# Egyptian	EGY2012_Moh_248_S100 excluded, because R2 fastq file missing
 INDIVIDUALS_EGYPT2020 = []
 POPULATION_EGYPT2020 = {}
 with open("EGYPT2020/populations_individuals.txt","r") as f_in:
     for line in f_in:
         pop,indv = line.strip("\n").split("\t")
-        # Three individuals have so little reads that haplogroups cannot be 
-        # computed (2, 14, 2 reads)
-        if not indv == "EGY2012_Moh_248_S100":
-            INDIVIDUALS_EGYPT2020.append(indv)
-            POPULATION_EGYPT2020[indv] = pop
+        INDIVIDUALS_EGYPT2020.append(indv)
+        POPULATION_EGYPT2020[indv] = pop
 
 rule fastqc_egyptian:
     input: "data/raw_egyptian/{sample}_L001_{mate}_001.fastq.gz"
@@ -455,16 +457,15 @@ rule download_1000g_mt_all:
 
 
 ################################################################################
-################# Haplogroups from BAM files usinng Haplocheck #################
+### Haplogroups from BAM files usinng Haplocheck version 1.1.2 #################
 ################################################################################
 
-# Download and install
-#mkdir haplocheck 
+# Download and install haplocheck version 1.1.2
+#mkdir haplocheck
 #cd haplocheck
 #wget https://github.com/genepi/cloudgene/releases/download/v2.2.0/cloudgene-installer.sh
 #bash cloudgene-installer.sh
 #./cloudgene install https://github.com/genepi/haplocheck/releases/download/v1.1.2/haplocheck.zip 
-
 rule run_haplocheck:
     input: "{dataset}/{population}/{individual}_mt.bam"
     output: "haplocheck/results/{dataset}_{population}_{individual}/haplogroups/haplogroups.txt",
@@ -508,6 +509,46 @@ rule combined_haplogroup_file:
     shell: "cat {input[0]} | head -n 1 > {output}; " + \
             "cat haplocheck/results/*/haplogroups/haplogroups.txt | " + \
             "grep -v SampleID >> {output} " 
+
+rule combined_hgdp_haplogroup_file:
+    input: expand("haplocheck/results/BERGSTROEM2020_{population}_{individual}/haplogroups/haplogroups.txt", \
+                    zip, \
+                    individual=INDIVIDUALS_HGDP, \
+                    population=[POPULATION_HGDP[indv] for indv in INDIVIDUALS_HGDP])
+    output: "haplocheck/results/hgdp_haplogroups.txt"
+    shell: "cat {input[0]} | head -n 1 > {output}; " + \
+            "cat haplocheck/results/BERGSTROEM2020*/haplogroups/haplogroups.txt | " + \
+            "grep -v SampleID >> {output} " 
+
+rule combined_hgdp_contamination_file:
+    input: expand("haplocheck/results/BERGSTROEM2020_{population}_{individual}/haplogroups/haplogroups.txt", \
+                    zip, \
+                    individual=INDIVIDUALS_HGDP, \
+                    population=[POPULATION_HGDP[indv] for indv in INDIVIDUALS_HGDP])
+    output: "haplocheck/results/hgdp_contaminations.txt"
+    shell: "cat {input[0]} | head -n 1 > {output}; " + \
+            "cat haplocheck/results/BERGSTROEM2020*/contamination/contamination.txt | " + \
+            "grep -v Sample >> {output} " 
+
+rule combined_1000g_haplogroup_file:
+    input: expand("haplocheck/results/1000G_{population}_{individual}/haplogroups/haplogroups.txt", \
+                    zip, \
+                    individual=INDIVIDUALS_1000G, \
+                    population=[POPULATION_1000G[indv] for indv in INDIVIDUALS_1000G])
+    output: "haplocheck/results/1000g_haplogroups.txt"
+    shell: "cat {input[0]} | head -n 1 > {output}; " + \
+            "cat haplocheck/results/1000G*/haplogroups/haplogroups.txt | " + \
+            "grep -v SampleID >> {output} " 
+
+rule combined_1000g_contamination_file:
+    input: expand("haplocheck/results/1000G_{population}_{individual}/haplogroups/haplogroups.txt", \
+                    zip, \
+                    individual=INDIVIDUALS_1000G, \
+                    population=[POPULATION_1000G[indv] for indv in INDIVIDUALS_1000G])
+    output: "haplocheck/results/1000G_contaminations.txt"
+    shell: "cat {input[0]} | head -n 1 > {output}; " + \
+            "cat haplocheck/results/1000G*/contamination/contamination.txt | " + \
+            "grep -v Sample >> {output} " 
 
 rule combined_sudan_haplogroup_file:
     input: expand("haplocheck/results/SUDAN2020_Sudanese_{individual}/haplogroups/haplogroups.txt", \
@@ -574,3 +615,25 @@ rule combined_egypt_contamination_file:
             "grep -v Sample >> {output} " 
 
 
+################################################################################
+### Haplogroups from BAM files usinng Haplocheck version 1.3.2 #################
+################################################################################
+
+# Download and install haplocheck version 1.3.2
+# This version processes all files in a directory provided as input
+#mkdir haplocheck_v1.3.2
+#cd haplocheck_v1.3.2
+# curl -s install.cloudgene.io | bash -s 2.3.3
+#./cloudgene install https://github.com/genepi/haplocheck/releases/download/v1.3.2/haplocheck.zip 
+rule run_haplocheck_1_3_2_egypt:
+    input: expand("EGYPT2020/Egyptian/{individual}_mt.bam.bai",individual=INDIVIDUALS_EGYPT2020)
+    output: "haplocheck_v1.3.2/results/EGYPT2020/haplogroups/haplogroups.txt",
+            "haplocheck_v1.3.2/results/EGYPT2020/contamination/contamination.txt"
+    params: prefix="haplocheck_v1.3.2/results/EGYPT2020"
+    conda: "envs/samtools.yaml"
+    shell: "./haplocheck_v1.3.2/cloudgene run haplocheck@1.3.2 " + \
+                                            "--files ../EGYPT2020/Egyptian " +\
+                                            "--output results/EGYPT2020/ " +\
+                                            "--format BAM "+\
+                                            "--show-log "+\
+                                            "--show-output "
