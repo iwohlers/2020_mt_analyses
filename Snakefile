@@ -616,6 +616,108 @@ rule combined_egypt_contamination_file:
 
 
 ################################################################################
+########### Variant calling with the caller used by haplocheck, mutserve #######
+################################################################################
+
+rule get_rCRS:
+    output: "ref/rCRS.fa"
+    shell: "wget -O {output[0]} https://www.ncbi.nlm.nih.gov/search/api/sequence/NC_012920.1/?report=fasta"
+
+rule rename_to_chrM:
+    input: "ref/rCRS.fa"
+    output: "ref/chrM.fa"
+    shell: "cat {input} | sed 's/>/>chrM /g' > {output} "
+    
+rule index_rCRS:
+    input: "ref/chrM.fa"
+    output: "ref/chrM.fa.fai"
+    conda: "envs/samtools.yaml"
+    shell: "samtools faidx {input}"
+
+
+# mutserve has a "--writeFasta" option, but it doesn't seem to consider 
+# deletions, thus we rather go from VCF to fasta using bcftools subsequently
+rule mutserve:
+    input: bam="{dataset}/{population}/{individual}_mt.bam",
+           reference="ref/rCRS.fa",
+           index="ref/rCRS.fa.fai"
+    output: "{dataset}/{population}/{individual}.vcf",
+            "{dataset}/{population}/{individual}.txt",
+            "{dataset}/{population}/{individual}_raw.txt"
+    shell: "java -jar mutserve_v1.3.4/mutserve-1.3.4.jar analyse-local " +\
+           " --input {input.bam} " + \
+           " --level 0.01 " + \
+           " --noBaq " + \
+           " --reference {input.reference} " + \
+           " --mapQ 20 " + \
+           " --baseQ 20 " + \
+           " --deletions " + \
+           " --output {output} "
+
+# Select those variants for which the major base is the non-reference base 
+# this is independent of type (1-> homoplasmic, 2-> heteroplasmic)
+# These are the variants that are also listed in the haplogrep2 output
+# as occurring in the sample
+rule select_major_haplogroup_variants:
+    input: "{dataset}/{population}/{individual}.vcf",
+           "{dataset}/{population}/{individual}.txt"
+    output: "{dataset}/{population}/{individual}_major.vcf"
+    run:
+        major_variants = {}
+        with open(input[1],"r") as f_in:
+            for line in f_in:
+                s = line.strip("\n").split("\t")
+                alt = s[3]
+                major = s[5]
+                if alt == major:
+                    major_variants["_".join(s[1:4])] = True
+        with open(input[0],"r") as f_in, open(output[0],"w") as f_out:
+            for line in f_in: 
+                if line[0] == "#":
+                    f_out.write(line)
+                    continue
+                s = line.strip("\n").split("\t")
+                # Special issue: deletions; what about insertions? -> they are
+                # currently not called with mutserve
+                if s[4] == '*':
+                    s[4] = 'D'
+                if "_".join([s[1],s[3],s[4]]) in major_variants:
+                    f_out.write(line)
+
+ruleorder: select_major_haplogroup_variants > mutserve
+
+rule get_haplogroup_fasta_all:
+    input: expand("EGYPT2020/Egyptian/{individual}_mt.fa", \
+                    individual=INDIVIDUALS_EGYPT2020),  
+           expand("WOHLERS2020/Egyptian/{individual}_mt.fa", \
+                    individual=INDIVIDUALS_WOHLERS2020),
+           expand("SCHUENEMANN2017/AncientEgyptian/{individual}_mt.fa", \
+                    individual=INDIVIDUALS_SCHUENEMANN2017), 
+           expand("SUDAN2020/Sudanese/{individual}_mt.fa", \
+                    individual=INDIVIDUALS_SUDAN)
+
+rule bgzip_and_tabix:
+    input: "{dataset}/{population}/{individual}_major.vcf"
+    output: "{dataset}/{population}/{individual}_major.vcf.gz",
+            "{dataset}/{population}/{individual}_major.vcf.gz.tbi",
+    conda: "envs/bcftools.yaml"
+    shell: "cat {input} | bgzip > {output[0]}; tabix {output[0]}"
+
+# Note: sequences ref/rCRS and ref/Homo_sapiens.GRCh38.dna.chromosome.MT.fa.gz
+# are identical, but first is named "NC_012920.1" and second is named "MT"
+# The mutserv vcf refers to "chrM"
+# Replace '*', which is the gap symbol in mutserv VCF, with '-', the appropriate 
+# gap symbol in fasta format
+rule vcf_to_fasta:
+    input: ref="ref/chrM.fa",
+           vcf="{dataset}/{population}/{individual}_major.vcf.gz",
+           index="{dataset}/{population}/{individual}_major.vcf.gz.tbi",
+    output: "{dataset}/{population}/{individual}_mt.fa"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools consensus {input.vcf} < {input.ref} | " + \
+           "sed 's/*/-/g' > {output}"
+
+################################################################################
 ### Haplogroups from BAM files usinng Haplocheck version 1.3.2 #################
 ################################################################################
 
