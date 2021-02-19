@@ -708,6 +708,8 @@ rule bgzip_and_tabix:
 # The mutserv vcf refers to "chrM"
 # Replace '*', which is the gap symbol in mutserv VCF, with '-', the appropriate 
 # gap symbol in fasta format
+# Further, replace newlines not in the header line
+# Further, replace the header line to update the 'sequence name'
 rule vcf_to_fasta:
     input: ref="ref/chrM.fa",
            vcf="{dataset}/{population}/{individual}_major.vcf.gz",
@@ -715,7 +717,61 @@ rule vcf_to_fasta:
     output: "{dataset}/{population}/{individual}_mt.fa"
     conda: "envs/bcftools.yaml"
     shell: "bcftools consensus {input.vcf} < {input.ref} | " + \
-           "sed 's/*/-/g' > {output}"
+           "sed 's/*/-/g' | " + \
+           "tr --delete '\n' | " + \
+           "sed 's/>chrM NC_012920.1 Homo sapiens mitochondrion, complete genome/\\n>{wildcards.individual}\\n/g' > {output}"
+
+
+################################################################################
+### Haplogroups from BAM files usinng Haplocheck version 1.3.2 #################
+################################################################################
+
+rule combined_mt_fasta:
+    input: expand("EGYPT2020/Egyptian/{individual}_mt.fa", \
+                    individual=INDIVIDUALS_EGYPT2020),  
+           expand("WOHLERS2020/Egyptian/{individual}_mt.fa", \
+                    individual=INDIVIDUALS_WOHLERS2020),
+           expand("SCHUENEMANN2017/AncientEgyptian/{individual}_mt.fa", \
+                    individual=INDIVIDUALS_SCHUENEMANN2017), 
+           expand("SUDAN2020/Sudanese/{individual}_mt.fa", \
+                    individual=INDIVIDUALS_SUDAN)
+    output: "north_african_mt/north_african_mt.fa"
+    shell: "cat {input} > {output}"
+
+rule combined_mt_vcf:
+    input: expand("EGYPT2020/Egyptian/{individual}_major.vcf.gz", \
+                    individual=INDIVIDUALS_EGYPT2020),  
+           expand("WOHLERS2020/Egyptian/{individual}_major.vcf.gz", \
+                    individual=INDIVIDUALS_WOHLERS2020),
+           expand("SCHUENEMANN2017/AncientEgyptian/{individual}_major.vcf.gz", \
+                    individual=INDIVIDUALS_SCHUENEMANN2017), 
+           expand("SUDAN2020/Sudanese/{individual}_major.vcf.gz", \
+                    individual=INDIVIDUALS_SUDAN)
+    output: "north_african_mt/north_african_mt.vcf.gz"
+    conda: "envs/vcftools.yaml"
+    shell: "vcf-merge {input} | bgzip -c > {output}"
+
+# Download the alignment of McInerney et al. (mitoImpute) ; accroding to 
+# https://github.com/sjfandrews/MitoImpute
+# "McInerney_Master_Alignment_July18_2018.fasta.gz is the novel reference 
+# alignment constructed in 2018 from the sequences downloaded on the 18th of 
+# July, 2018. It contains 44,299 aligned complete mitochondrial DNA sequences. 
+# These sequences are all 16,569 DNA nucleotide states long (to match the 
+# numbering conventions of the revised Cambridge Reference Sequence - Andrews 
+# et al., 1999). From this alignment the Reference Panels were filtered down to 
+# 36,960 sequences and filtered to thresholds detailed in McInerney et al. (2020).
+# The number of unique sequences in the alignment is 36,278
+rule get_mitoimpute_alignments:
+    output: "mitoimpute/McInerney_Master_Alignment_July18_2018.fasta.gz"
+    shell: "wget -P mitoimpute https://github.com/sjfandrews/MitoImpute/raw/master/resources/alignments/McInerney_Master_Alignment_July18_2018.fasta.gz"
+
+# Here we download the VCF file of samples after filtering and including only
+# variants with at least a frequency of 0.001 (i.e. 0.1%) 
+# This file contains 36,960 individuals and 1940 variant sites
+rule get_mitoimpute_variants:
+    output: "mitoimpute/ReferencePanel_v1_highQual_MAF0.001_filtered.vcf.gz"
+    shell: "wget -P mitoimpute https://github.com/sjfandrews/MitoImpute/raw/master/resources/ReferencePanel_v1_0.001/ReferencePanel_v1_highQual_MAF0.001_filtered.vcf.gz"
+
 
 ################################################################################
 ### Haplogroups from BAM files usinng Haplocheck version 1.3.2 #################
