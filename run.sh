@@ -9,4 +9,4 @@ source activate workflow_2020_population_genetics
 
 echo "RUNNING SNAKEMAKE WORKFLOW..."
 
-snakemake -j 2 --rerun-incomplete -k -p --use-conda combined_mt_fasta combined_mt_vcf #combined_egypt_haplogroup_file combined_egypt_contamination_file fastqc_egyptian_summary get_coverage_egypt_all summarize_mapping_stats_egypt
+snakemake -j 2 --rerun-incomplete -k -p --use-conda get_fasta_mitoimpute_indv_only combine_north_african_mitoimpute #combined_mt_vcf combined_egypt_haplogroup_file combined_egypt_contamination_file fastqc_egyptian_summary get_coverage_egypt_all summarize_mapping_stats_egypt

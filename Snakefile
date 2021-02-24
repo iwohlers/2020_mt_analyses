@@ -738,6 +738,7 @@ rule combined_mt_fasta:
     output: "north_african_mt/north_african_mt.fa"
     shell: "cat {input} > {output}"
 
+# This results in 482 individuals and 1,686 sites
 rule combined_mt_vcf:
     input: expand("EGYPT2020/Egyptian/{individual}_major.vcf.gz", \
                     individual=INDIVIDUALS_EGYPT2020),  
@@ -750,6 +751,12 @@ rule combined_mt_vcf:
     output: "north_african_mt/north_african_mt.vcf.gz"
     conda: "envs/vcftools.yaml"
     shell: "vcf-merge {input} | bgzip -c > {output}"
+    
+rule tabix_na_mt_vcf:
+    input: "north_african_mt/north_african_mt.vcf.gz",
+    output: "north_african_mt/north_african_mt.vcf.gz.tbi"
+    conda: "envs/bcftools.yaml"
+    shell: "tabix {input}"
 
 # Download the alignment of McInerney et al. (mitoImpute) ; accroding to 
 # https://github.com/sjfandrews/MitoImpute
@@ -772,6 +779,40 @@ rule get_mitoimpute_variants:
     output: "mitoimpute/ReferencePanel_v1_highQual_MAF0.001_filtered.vcf.gz"
     shell: "wget -P mitoimpute https://github.com/sjfandrews/MitoImpute/raw/master/resources/ReferencePanel_v1_0.001/ReferencePanel_v1_highQual_MAF0.001_filtered.vcf.gz"
 
+rule tabix_mitoimpute_variants:
+    input: "mitoimpute/ReferencePanel_v1_highQual_MAF0.001_filtered.vcf.gz"
+    output: "mitoimpute/ReferencePanel_v1_highQual_MAF0.001_filtered.vcf.gz.tbi"
+    conda: "envs/bcftools.yaml"
+    shell: "tabix {input}"
+
+# Merge North African with mitoimpute VCF
+rule combine_north_african_mitoimpute:
+    input: "mitoimpute/ReferencePanel_v1_highQual_MAF0.001_filtered.vcf.gz",
+           "north_african_mt/north_african_mt.vcf.gz",
+           "north_african_mt/north_african_mt.vcf.gz.tbi"
+    output: "north_african_mt/mitoimpute_plus_north_african_mt.vcf.gz"
+    conda: "envs/vcftools.yaml"
+    shell: "vcf-merge {input[0]} {input[1]} | bgzip -c > {output}"
+    
+# Get a list if individuals in the VCF, i.e. use by mitoimpute after MT sequence
+# QC
+rule list_mitoimpute_samples:
+    input: "mitoimpute/ReferencePanel_v1_highQual_MAF0.001_filtered.vcf.gz",
+           "mitoimpute/ReferencePanel_v1_highQual_MAF0.001_filtered.vcf.gz.tbi"
+    output: "north_african_mt/mitoimpute_individuals.txt"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools query -l {input} > {output}"
+
+# Now get a fasta with only the same individuals that after filtering are also
+# present in the mitoimpute VCF
+rule get_fasta_mitoimpute_indv_only:
+    input: "mitoimpute/McInerney_Master_Alignment_July18_2018.fasta.gz",
+           "north_african_mt/mitoimpute_individuals.txt"
+    output: "north_african_mt/mitoimpute_plus_north_african_mt.fa"
+    shell: "zcat {input[0]} | " + \
+           "grep -A 1 --no-group-separator -f {input[1]} " + \
+           " > {output} || true"
+            
 
 ################################################################################
 ### Haplogroups from BAM files usinng Haplocheck version 1.3.2 #################
