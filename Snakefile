@@ -789,6 +789,7 @@ rule tabix_mitoimpute_variants:
 rule combine_north_african_mitoimpute:
     input: "mitoimpute/ReferencePanel_v1_highQual_MAF0.001_filtered.vcf.gz",
            "north_african_mt/north_african_mt.vcf.gz",
+           "mitoimpute/ReferencePanel_v1_highQual_MAF0.001_filtered.vcf.gz.tbi",
            "north_african_mt/north_african_mt.vcf.gz.tbi"
     output: "north_african_mt/mitoimpute_plus_north_african_mt.vcf.gz"
     conda: "envs/vcftools.yaml"
@@ -808,10 +809,16 @@ rule list_mitoimpute_samples:
 rule get_fasta_mitoimpute_indv_only:
     input: "mitoimpute/McInerney_Master_Alignment_July18_2018.fasta.gz",
            "north_african_mt/mitoimpute_individuals.txt"
-    output: "north_african_mt/mitoimpute_plus_north_african_mt.fa"
+    output: "north_african_mt/mitoimpute_vcf_individuals.fa"
     shell: "zcat {input[0]} | " + \
            "grep -A 1 --no-group-separator -f {input[1]} " + \
            " > {output} || true"
+
+rule fasta_mitoimput_plus_north_african:
+    input: "north_african_mt/north_african_mt.fa",
+           "north_african_mt/mitoimpute_vcf_individuals.fa"
+    output: "north_african_mt/mitoimpute_plus_north_african_mt.fa"
+    shell: "cat {input} > {output}"
             
 
 ################################################################################
