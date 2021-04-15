@@ -703,6 +703,13 @@ rule bgzip_and_tabix:
     conda: "envs/bcftools.yaml"
     shell: "cat {input} | bgzip > {output[0]}; tabix {output[0]}"
 
+rule bgzip_and_tabix_incl_minor:
+    input: "{dataset}/{population}/{individual}.vcf"
+    output: "{dataset}/{population}/{individual}.vcf.gz",
+            "{dataset}/{population}/{individual}.vcf.gz.tbi",
+    conda: "envs/bcftools.yaml"
+    shell: "cat {input} | bgzip > {output[0]}; tabix {output[0]}"
+
 # Note: sequences ref/rCRS and ref/Homo_sapiens.GRCh38.dna.chromosome.MT.fa.gz
 # are identical, but first is named "NC_012920.1" and second is named "MT"
 # The mutserv vcf refers to "chrM"
@@ -723,7 +730,7 @@ rule vcf_to_fasta:
 
 
 ################################################################################
-### Haplogroups from BAM files usinng Haplocheck version 1.3.2 #################
+################# Combined North African Fasta and VCFs ########################
 ################################################################################
 
 rule combined_mt_fasta:
@@ -738,7 +745,7 @@ rule combined_mt_fasta:
     output: "north_african_mt/north_african_mt.fa"
     shell: "cat {input} > {output}"
 
-# This results in 482 individuals and 1,686 sites
+# This results in 578 individuals and 1,844 sites
 rule combined_mt_vcf:
     input: expand("EGYPT2020/Egyptian/{individual}_major.vcf.gz", \
                     individual=INDIVIDUALS_EGYPT2020),  
@@ -755,6 +762,26 @@ rule combined_mt_vcf:
 rule tabix_na_mt_vcf:
     input: "north_african_mt/north_african_mt.vcf.gz",
     output: "north_african_mt/north_african_mt.vcf.gz.tbi"
+    conda: "envs/bcftools.yaml"
+    shell: "tabix {input}"
+
+# This results in 578 individuals and XXXX sites
+rule combined_mt_vcf_incl_minor:
+    input: expand("EGYPT2020/Egyptian/{individual}.vcf.gz", \
+                    individual=INDIVIDUALS_EGYPT2020),  
+           expand("WOHLERS2020/Egyptian/{individual}.vcf.gz", \
+                    individual=INDIVIDUALS_WOHLERS2020),
+           expand("SCHUENEMANN2017/AncientEgyptian/{individual}.vcf.gz", \
+                    individual=INDIVIDUALS_SCHUENEMANN2017), 
+           expand("SUDAN2020/Sudanese/{individual}.vcf.gz", \
+                    individual=INDIVIDUALS_SUDAN)
+    output: "north_african_mt/north_african_mt_incl_minor.vcf.gz"
+    conda: "envs/vcftools.yaml"
+    shell: "vcf-merge {input} | bgzip -c > {output}"
+
+rule tabix_na_mt_vcf_incl_minor:
+    input: "north_african_mt/north_african_mt_incl_minor.vcf.gz",
+    output: "north_african_mt/north_african_mt_incl_minor.vcf.gz.tbi"
     conda: "envs/bcftools.yaml"
     shell: "tabix {input}"
 
@@ -814,12 +841,135 @@ rule get_fasta_mitoimpute_indv_only:
            "grep -A 1 --no-group-separator -f {input[1]} " + \
            " > {output} || true"
 
-rule fasta_mitoimput_plus_north_african:
+rule fasta_mitoimpute_plus_north_african:
     input: "north_african_mt/north_african_mt.fa",
            "north_african_mt/mitoimpute_vcf_individuals.fa"
     output: "north_african_mt/mitoimpute_plus_north_african_mt.fa"
     shell: "cat {input} > {output}"
-            
+
+# Extract individuals with high quality data from VCF
+rule extract_extra_high_quality:
+    input: "data/high_quality_samplenames.txt", 
+           "north_african_mt/north_african_mt.vcf.gz"
+    output: "north_african_mt/north_african_mt_selected.vcf.gz"
+    conda: "envs/vcftools.yaml"
+    shell: "vcftools --gzvcf {input[1]} " + \
+                    "--keep {input[0]} " + \
+                    "--mac 1 " + \
+                    "--stdout " + \
+                    "--recode " + \
+                    " | bgzip > {output[0]} "
+
+rule extract_extra_high_quality_incl_minor:
+    input: "data/high_quality_samplenames.txt", 
+           "north_african_mt/north_african_mt_incl_minor.vcf.gz"
+    output: "north_african_mt/north_african_mt_incl_minor_selected.vcf.gz"
+    conda: "envs/vcftools.yaml"
+    shell: "vcftools --gzvcf {input[1]} " + \
+                    "--keep {input[0]} " + \
+                    "--mac 1 " + \
+                    "--stdout " + \
+                    "--recode " + \
+                    " | bgzip > {output[0]} "
+
+# # Extract individuals with high quality data from fasta
+rule extract_fasta_extra_high_quality:
+    input: "north_african_mt/north_african_mt.fa",
+           "data/high_quality_samplenames.txt"
+    output: "north_african_mt/north_african_mt_selected.fa"
+    shell: "cat {input[0]} | " + \
+           "grep -A 1 --no-group-separator -f {input[1]} " + \
+           " > {output} "
+
+
+################################################################################
+######### Extract North African Genbank MT sequences from Mitoimpute ###########
+################################################################################
+
+rule get_north_east_african_from_mitoimpute:
+    input: "data/McInerney2020_meta.txt"
+    output: "mitoimpute/north_east_african_ids.txt"
+    shell: "cat {input} | grep Egypt | cut -f 1 > {output}; " + \
+           "cat {input} | grep Ethiopia | cut -f 1 >> {output}; " + \
+           "cat {input} | grep Morocco | cut -f 1 >> {output}; " + \
+           "cat {input} | grep Tunisia | cut -f 1 >> {output} "
+
+rule extract_north_east_african_from_mitoimpute:
+    input: "mitoimpute/McInerney_Master_Alignment_July18_2018.fasta.gz",
+           "mitoimpute/north_east_african_ids.txt"
+    output: "north_african_mt/northafrican_genbank.fasta"
+    shell: "zcat {input[0]} | grep -A 1 --no-group-separator -f {input[1]} " + \
+            "> {output} "
+
+
+################################################################################
+#################### Making and visualizing trees ##############################
+################################################################################
+
+#rule cp_for_phylogenetics:
+#    input: "north_african_mt/north_african_mt.vcf.gz"
+#    output: "phylogenetics/north_african_mt.vcf.gz"
+#    shell: "cp {input} {output}"
+
+rule upgma_tree_complete:
+    input: "phylogenetics/north_african_mt.vcf.gz"
+    output: "phylogenetics/north_african_mt.newick"
+    conda: "envs/vcfkit.yaml"
+    shell: "vk phylo tree upgma {input} > {output}"
+
+
+################################################################################
+######################### Bamsnap Visualisierung ###############################
+################################################################################
+
+# Rename chrM to MT for matching chromosome names in bamsnap
+rule rename_chrM_to_MT:
+    input: "north_african_mt/north_african_mt.vcf.gz"
+    output: "bamsnap/north_african_mt.vcf.gz"
+    conda: "envs/vcftools.yaml"
+    shell: "zcat {input[0]} | sed 's/chrM/MT/g' | bgzip > {output[0]} "
+
+rule fasta_uncompressed:
+    input: "ref/Homo_sapiens.GRCh38.dna.chromosome.MT.fa.gz"
+    output: "ref/Homo_sapiens.GRCh38.dna.chromosome.MT.fa"
+    shell: "zcat {input} > {output}"
+
+# To match the bamfiles, MT is needed as chromosome name
+# Parameters:
+# -coverage_height (default=40) : coverage plot height
+# -coverage_fontsize (default=9) : coverage font size
+# -coverage_vaf (default=0.2) : coverage variant allele fraction threshold
+
+rule bamsnap:
+    input: vcf="bamsnap2/north_african_mt.vcf",
+           ref="ref/Homo_sapiens.GRCh38.dna.chromosome.MT.fa",
+           bams="bamsnap2/CoA_255_S65_mt.bam"#"test.bam"#,"bamsnap2/CoA_255_S65_mt.bam"]
+#           expand("EGYPT2020/Egyptian/{individual}_mt.bam", \
+#                    individual=INDIVIDUALS_EGYPT2020),  
+#           expand("WOHLERS2020/Egyptian/{individual}_mt.bam", \
+#                    individual=INDIVIDUALS_WOHLERS2020),
+#           expand("SCHUENEMANN2017/AncientEgyptian/{individual}_mt.bam", \
+#                    individual=INDIVIDUALS_SCHUENEMANN2017), 
+#           expand("SUDAN2020/Sudanese/{individual}_mt.bam", \
+#                    individual=INDIVIDUALS_SUDAN)
+    output: "bamsnap2/north_african/index.html"
+    params: out_base=lambda wildcards, output: output[0][:-11]
+    conda: "envs/bamsnap.yaml"
+    shell: "bamsnap -bam {input.bams} " + \
+                   "-ref {input.ref} " + \
+                   "-draw coordinates bamplot base " + \
+                   "-bamplot coverage " + \
+                   "-coverage_fontsize 15 " + \
+                   "-coverage_vaf 0.05 " + \
+                   "-coverage_hight 160 " + \
+                   "-vcf {input.vcf} " + \
+                   "-debug " + \
+                   "-margin 20 " + \
+                   "-process 8 " + \
+                   "-separated_bam " + \
+                   "-out {params.out_base}"
+#                                      "-pos MT:601-10569 " + \
+#                   "-pos MT:1000-4569 " + \
 
 ################################################################################
 ### Haplogroups from BAM files usinng Haplocheck version 1.3.2 #################
