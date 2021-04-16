@@ -698,15 +698,15 @@ rule get_haplogroup_fasta_all:
 
 rule bgzip_and_tabix:
     input: "{dataset}/{population}/{individual}_major.vcf"
-    output: "{dataset}/{population}/{individual}_major.vcf.gz",
-            "{dataset}/{population}/{individual}_major.vcf.gz.tbi",
+    output: "{dataset}/{population}/major_variants/{individual}_major.vcf.gz",
+            "{dataset}/{population}/major_variants/{individual}_major.vcf.gz.tbi",
     conda: "envs/bcftools.yaml"
     shell: "cat {input} | bgzip > {output[0]}; tabix {output[0]}"
 
 rule bgzip_and_tabix_incl_minor:
     input: "{dataset}/{population}/{individual}.vcf"
-    output: "{dataset}/{population}/{individual}.vcf.gz",
-            "{dataset}/{population}/{individual}.vcf.gz.tbi",
+    output: "{dataset}/{population}/all_variants/{individual}.vcf.gz",
+            "{dataset}/{population}/all_variants/{individual}.vcf.gz.tbi",
     conda: "envs/bcftools.yaml"
     shell: "cat {input} | bgzip > {output[0]}; tabix {output[0]}"
 
@@ -719,9 +719,9 @@ rule bgzip_and_tabix_incl_minor:
 # Further, replace the header line to update the 'sequence name'
 rule vcf_to_fasta:
     input: ref="ref/chrM.fa",
-           vcf="{dataset}/{population}/{individual}_major.vcf.gz",
-           index="{dataset}/{population}/{individual}_major.vcf.gz.tbi",
-    output: "{dataset}/{population}/{individual}_mt.fa"
+           vcf="{dataset}/{population}/major_variants/{individual}_major.vcf.gz",
+           index="{dataset}/{population}/major_variants/{individual}_major.vcf.gz.tbi",
+    output: "{dataset}/{population}/fasta/{individual}_mt.fa"
     conda: "envs/bcftools.yaml"
     shell: "bcftools consensus {input.vcf} < {input.ref} | " + \
            "sed 's/*/-/g' | " + \
@@ -734,30 +734,30 @@ rule vcf_to_fasta:
 ################################################################################
 
 rule combined_mt_fasta:
-    input: expand("EGYPT2020/Egyptian/{individual}_mt.fa", \
+    input: expand("EGYPT2020/Egyptian/fasta/{individual}_mt.fa", \
                     individual=INDIVIDUALS_EGYPT2020),  
-           expand("WOHLERS2020/Egyptian/{individual}_mt.fa", \
+           expand("WOHLERS2020/Egyptian/fasta/{individual}_mt.fa", \
                     individual=INDIVIDUALS_WOHLERS2020),
-           expand("SCHUENEMANN2017/AncientEgyptian/{individual}_mt.fa", \
+           expand("SCHUENEMANN2017/AncientEgyptian/fasta/{individual}_mt.fa", \
                     individual=INDIVIDUALS_SCHUENEMANN2017), 
-           expand("SUDAN2020/Sudanese/{individual}_mt.fa", \
+           expand("SUDAN2020/Sudanese/fasta/{individual}_mt.fa", \
                     individual=INDIVIDUALS_SUDAN)
     output: "north_african_mt/north_african_mt.fa"
     shell: "cat {input} > {output}"
 
-# This results in 578 individuals and 1,844 sites
+# This results in 578 individuals and XXX sites
 rule combined_mt_vcf:
-    input: expand("EGYPT2020/Egyptian/{individual}_major.vcf.gz", \
+    input: expand("EGYPT2020/Egyptian/major_variants/{individual}_major.vcf.gz", \
                     individual=INDIVIDUALS_EGYPT2020),  
-           expand("WOHLERS2020/Egyptian/{individual}_major.vcf.gz", \
+           expand("WOHLERS2020/Egyptian/major_variants/{individual}_major.vcf.gz", \
                     individual=INDIVIDUALS_WOHLERS2020),
-           expand("SCHUENEMANN2017/AncientEgyptian/{individual}_major.vcf.gz", \
+           expand("SCHUENEMANN2017/AncientEgyptian/major_variants/{individual}_major.vcf.gz", \
                     individual=INDIVIDUALS_SCHUENEMANN2017), 
-           expand("SUDAN2020/Sudanese/{individual}_major.vcf.gz", \
+           expand("SUDAN2020/Sudanese/major_variants/{individual}_major.vcf.gz", \
                     individual=INDIVIDUALS_SUDAN)
     output: "north_african_mt/north_african_mt.vcf.gz"
-    conda: "envs/vcftools.yaml"
-    shell: "vcf-merge {input} | bgzip -c > {output}"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools merge -m none -O z {input} > {output}"
     
 rule tabix_na_mt_vcf:
     input: "north_african_mt/north_african_mt.vcf.gz",
@@ -777,7 +777,7 @@ rule combined_mt_vcf_incl_minor:
                     individual=INDIVIDUALS_SUDAN)
     output: "north_african_mt/north_african_mt_incl_minor.vcf.gz"
     conda: "envs/vcftools.yaml"
-    shell: "vcf-merge {input} | bgzip -c > {output}"
+    shell: "bcftools merge -m none -O z {input} > {output}"
 
 rule tabix_na_mt_vcf_incl_minor:
     input: "north_african_mt/north_african_mt_incl_minor.vcf.gz",
@@ -855,7 +855,7 @@ rule extract_extra_high_quality:
     conda: "envs/vcftools.yaml"
     shell: "vcftools --gzvcf {input[1]} " + \
                     "--keep {input[0]} " + \
-                    "--mac 1 " + \
+                    "--non-ref-ac-any 1 " + \
                     "--stdout " + \
                     "--recode " + \
                     " | bgzip > {output[0]} "
@@ -867,7 +867,6 @@ rule extract_extra_high_quality_incl_minor:
     conda: "envs/vcftools.yaml"
     shell: "vcftools --gzvcf {input[1]} " + \
                     "--keep {input[0]} " + \
-                    "--mac 1 " + \
                     "--stdout " + \
                     "--recode " + \
                     " | bgzip > {output[0]} "
@@ -916,6 +915,13 @@ rule upgma_tree_complete:
     output: "phylogenetics/north_african_mt.newick"
     conda: "envs/vcfkit.yaml"
     shell: "vk phylo tree upgma {input} > {output}"
+
+rule visualize_tree:
+    input: "phylogenetics/north_african_mt.vcf.gz",
+           "phylogenetics/north_african_mt.newick"
+    output: "phylogenetics/north_african_phylo.pdf"
+    conda: "envs/ggtree.yaml"
+    script: "scripts/tree.R"
 
 
 ################################################################################
