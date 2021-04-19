@@ -849,7 +849,7 @@ rule fasta_mitoimpute_plus_north_african:
 
 # Extract individuals with high quality data from VCF
 rule extract_extra_high_quality:
-    input: "data/high_quality_samplenames.txt", 
+    input: "data/high_quality_samplenames_longnames.txt", 
            "north_african_mt/north_african_mt.vcf.gz"
     output: "north_african_mt/north_african_mt_selected.vcf.gz"
     conda: "envs/vcftools.yaml"
@@ -861,7 +861,7 @@ rule extract_extra_high_quality:
                     " | bgzip > {output[0]} "
 
 rule extract_extra_high_quality_incl_minor:
-    input: "data/high_quality_samplenames.txt", 
+    input: "data/high_quality_samplenames_longnames.txt", 
            "north_african_mt/north_african_mt_incl_minor.vcf.gz"
     output: "north_african_mt/north_african_mt_incl_minor_selected.vcf.gz"
     conda: "envs/vcftools.yaml"
