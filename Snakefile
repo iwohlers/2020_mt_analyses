@@ -730,6 +730,45 @@ rule vcf_to_fasta:
 
 
 ################################################################################
+################# Combined HGDP Fasta and VCFs #################################
+################################################################################
+
+rule combined_mt_fasta_1000g:
+    input: expand("1000G/{population}/fasta/{individual}_mt.fa", \
+                    zip, \
+                    individual=INDIVIDUALS_1000G, \
+                    population=[POPULATION_1000G[indv] for indv in INDIVIDUALS_1000G])
+    output: "control_mt/1000g_mt.fa"
+    shell: "cat {input} > {output}"
+
+rule combined_mt_vcf_1000g:
+    input: expand("1000G/{population}/major_variants/{individual}_major.vcf.gz", \
+                    zip, \
+                    individual=INDIVIDUALS_1000G, \
+                    population=[POPULATION_1000G[indv] for indv in INDIVIDUALS_1000G])
+    output: "control_mt/1000g_mt.vcf.gz"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools merge -m none -O z {input} > {output}"
+
+rule combined_mt_fasta_hgdp:
+    input: expand("BERGSTROEM2020/{population}/fasta/{individual}_mt.fa", \
+                    zip, \
+                    individual=INDIVIDUALS_HGDP, \
+                    population=[POPULATION_HGDP[indv] for indv in INDIVIDUALS_HGDP])
+    output: "control_mt/hgdp_mt.fa"
+    shell: "cat {input} > {output}"
+
+rule combined_mt_vcf_hgdp:
+    input: expand("BERGSTROEM2020/{population}/major_variants/{individual}_major.vcf.gz", \
+                    zip, \
+                    individual=INDIVIDUALS_HGDP, \
+                    population=[POPULATION_HGDP[indv] for indv in INDIVIDUALS_HGDP])
+    output: "control_mt/hgdp_mt.vcf.gz"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools merge -m none -O z {input} > {output}"
+
+
+################################################################################
 ################# Combined North African Fasta and VCFs ########################
 ################################################################################
 
@@ -876,6 +915,28 @@ rule extract_fasta_extra_high_quality:
     input: "north_african_mt/north_african_mt.fa",
            "data/high_quality_samplenames.txt"
     output: "north_african_mt/north_african_mt_selected.fa"
+    shell: "cat {input[0]} | " + \
+           "grep -A 1 --no-group-separator -f {input[1]} " + \
+           " > {output} "
+
+# Extract individuals with high quality data from VCF
+rule extract_combined:
+    input: "data/combined_samplenames_longnames.txt", 
+           "north_african_mt/north_african_mt.vcf.gz"
+    output: "north_african_mt/north_african_mt_combined.vcf.gz"
+    conda: "envs/vcftools.yaml"
+    shell: "vcftools --gzvcf {input[1]} " + \
+                    "--keep {input[0]} " + \
+                    "--non-ref-ac-any 1 " + \
+                    "--stdout " + \
+                    "--recode " + \
+                    " | bgzip > {output[0]} "
+
+# # Extract individuals with high quality data from fasta
+rule extract_fasta_combined:
+    input: "north_african_mt/north_african_mt.fa",
+           "data/combined_samplenames.txt"
+    output: "north_african_mt/north_african_mt_combined.fa"
     shell: "cat {input[0]} | " + \
            "grep -A 1 --no-group-separator -f {input[1]} " + \
            " > {output} "
