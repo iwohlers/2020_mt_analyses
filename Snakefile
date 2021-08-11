@@ -18,6 +18,109 @@ rule index_bam:
 
 
 ################################################################################
+########################### German MT sequencing files #######################
+################################################################################
+
+INDIVIDUALS_GERMAN2021 = ["bloodBP-HL-P800276_S6","BP-HL-P800209_S57","BP-HL-P800212Derm_S56","BP-HL-P800221Derm_S39","BP-HL-P800221_S72"]
+POPULATION_GERMAN2021 = ["German" for x in range(6)]    
+
+rule fastqc_german:
+    input: "data/raw_german/{sample}_L001_{mate}_001.fastq.gz"
+    output: "fastqc_german/{sample}_L001_{mate}_001_fastqc.html",
+            "fastqc_german/{sample}_L001_{mate}_001_fastqc/summary.txt"
+    conda: "envs/fastqc.yaml"
+    shell: "fastqc --extract --outdir=fastqc_german/ {input}"
+    
+rule fastqc_german_all:
+    input: expand("fastqc_german/{sample}_L001_{mate}_001_fastqc.html",sample=INDIVIDUALS_GERMAN2021,mate=["R1","R2"])
+
+rule fastqc_german_summary:
+    input: expand("fastqc_german/{sample}_L001_{mate}_001_fastqc/summary.txt",sample=INDIVIDUALS_GERMAN2021,mate=["R1","R2"])
+    output: "fastqc_german/fastqc_summary.txt"
+    run:
+        with open(output[0],"w") as f_out:
+            header = ["","Basic Statistics","Per base sequence quality",\
+            "Per tile sequence quality","Per sequence quality scores", \
+            "Per base sequence content","Per sequence GC content", \
+            "Per base N content","Sequence Length Distribution", \
+            "Sequence Duplication Levels","Overrepresented sequences", \
+            "Adapter Content"]
+            f_out.write("\t".join(header)+"\n")
+            for filename in input:
+                f_out.write(filename.split("/")[1]+"\t")
+                with open(filename,"r") as f_in:
+                    i = 0
+                    for line in f_in:
+                        if i<10:
+                            f_out.write(line.split("\t")[0]+"\t")
+                            i += 1
+                        else:
+                            f_out.write(line.split("\t")[0]+"\n")
+
+rule bwa_mem_german:
+    input: index = "bwa_index/Homo_sapiens.GRCh38.dna.chromosome.MT.sa",
+           fastq_r1 = "data/raw_german/{sample}_L001_R1_001.fastq.gz",
+           fastq_r2 = "data/raw_german/{sample}_L001_R2_001.fastq.gz",
+    output: "GERMAN2021/mapped/{sample}.sam"
+    conda: "envs/bwa.yaml"
+    shell: "bwa mem -t 8 " + \
+           "bwa_index/Homo_sapiens.GRCh38.dna.chromosome.MT " + \
+           "{input.fastq_r1} {input.fastq_r2} > {output}"
+
+rule samtools_sort_to_bam_german:
+    input: "GERMAN2021/mapped/{sample}.sam"
+    output: "GERMAN2021/mapped/{sample}.bam"
+    conda: "envs/samtools.yaml"
+    shell: "samtools sort -O BAM {input} > {output}"
+
+rule samtools_stats_german:
+    input: "GERMAN2021/mapped/{sample}.bam"
+    output: "GERMAN2021/mapped/{sample}.stats"
+    conda: "envs/samtools.yaml"
+    shell: "samtools stats {input} > {output}"
+
+rule mapping_stats_german_all:
+    input: expand("GERMAN2021/mapped/{sample}.stats",sample=INDIVIDUALS_GERMAN2021)
+
+rule prepare_german:
+    input: "GERMAN2021/mapped/{sample}.bam"
+    output: "GERMAN2021/German/{sample}_mt.sam"
+    shell: "samtools view -h {input} > {output}"
+
+rule summarize_mapping_stats_german:
+    input: expand("GERMAN2021/mapped/{sample}.stats", sample=INDIVIDUALS_GERMAN2021)
+    output: "GERMAN2021/mapped/summary.stats"
+    run:
+        with open(output[0],"w") as f_out:
+            f_out.write("sample\treads\treads_mapped\tbases_mapped\taverage_length\tapprox_mt_coverage\n")
+            for filename in input:
+                with open(filename,"r") as f_in:
+                    f_out.write(filename.split("/")[-1].split(".")[0]+"\t")
+                    for line in f_in:
+                        if line[:13] == "SN\tsequences:":
+                            f_out.write(line.strip("\n").split("\t")[2]+"\t")
+                        if line[:16] == "SN\treads mapped:":
+                            f_out.write(line.strip("\n").split("\t")[2]+"\t")     
+                        if line[:16] == "SN\tbases mapped:":
+                            bases_mapped = line.strip("\n").split("\t")[2]
+                            f_out.write(bases_mapped+"\t")
+                        if line[:18] == "SN\taverage length:":
+                            f_out.write(line.strip("\n").split("\t")[2]+"\t") 
+                    f_out.write(str(round(int(bases_mapped)/16569,3))+"\n")
+
+rule get_coverage_german:
+    input: "GERMAN2021/mapped/{sample}.stats"
+    output: "GERMAN2021/mapped/{sample}.cov"
+    shell: "cat {input} | grep ^COV | cut -f 2- > {output}"
+
+rule get_coverage_german_all:
+    input: expand("GERMAN2021/mapped/{sample}.cov",sample=INDIVIDUALS_GERMAN2021)
+
+rule prepare_german_mt_all:
+     input: expand("GERMAN2021/German/{individual}_mt.sam", \
+            individual=INDIVIDUALS_GERMAN2021)
+
+################################################################################
 ######### Generation of Egyptian MT Bam files from MT sequencing ###############
 ################################################################################
 
@@ -612,6 +715,22 @@ rule combined_egypt_contamination_file:
     output: "haplocheck/results/egypt_contaminations.txt"
     shell: "cat {input[0]} | head -n 1 > {output}; " + \
             "cat haplocheck/results/EGYPT2020*/contamination/contamination.txt | " + \
+            "grep -v Sample >> {output} " 
+
+rule combined_german_haplogroup_file:
+    input: expand("haplocheck/results/GERMAN2021_German_{individual}/haplogroups/haplogroups.txt", \
+                    individual=INDIVIDUALS_GERMAN2021) 
+    output: "haplocheck/results/german_haplogroups.txt"
+    shell: "cat {input[0]} | head -n 1 > {output}; " + \
+            "cat haplocheck/results/GERMAN2021*/haplogroups/haplogroups.txt | " + \
+            "grep -v SampleID >> {output} " 
+
+rule combined_german_contamination_file:
+    input: expand("haplocheck/results/GERMAN2021_German_{individual}/contamination/contamination.txt", \
+                    individual=INDIVIDUALS_GERMAN2021) 
+    output: "haplocheck/results/german_contaminations.txt"
+    shell: "cat {input[0]} | head -n 1 > {output}; " + \
+            "cat haplocheck/results/GERMAN2021*/contamination/contamination.txt | " + \
             "grep -v Sample >> {output} " 
 
 
