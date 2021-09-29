@@ -21,8 +21,18 @@ rule index_bam:
 ########################### German MT sequencing files #######################
 ################################################################################
 
-INDIVIDUALS_GERMAN2021 = ["bloodBP-HL-P800276_S6","BP-HL-P800209_S57","BP-HL-P800212Derm_S56","BP-HL-P800221Derm_S39","BP-HL-P800221_S72"]
-POPULATION_GERMAN2021 = ["German" for x in range(6)]    
+rule get_indv_pop_german:
+    input: "data/raw_german/GERMAN_populations_individuals.txt"
+    output: "GERMAN2021/populations_individuals.txt"
+    shell: "cp {input} {output}"
+
+INDIVIDUALS_GERMAN2021 = []
+POPULATION_GERMAN2021 = {}
+with open("GERMAN2021/populations_individuals.txt","r") as f_in:
+    for line in f_in:
+        pop,indv = line.strip("\n").split("\t")
+        INDIVIDUALS_GERMAN2021.append(indv)
+        POPULATION_GERMAN2021[indv] = pop
 
 rule fastqc_german:
     input: "data/raw_german/{sample}_L001_{mate}_001.fastq.gz"
@@ -30,7 +40,7 @@ rule fastqc_german:
             "fastqc_german/{sample}_L001_{mate}_001_fastqc/summary.txt"
     conda: "envs/fastqc.yaml"
     shell: "fastqc --extract --outdir=fastqc_german/ {input}"
-    
+
 rule fastqc_german_all:
     input: expand("fastqc_german/{sample}_L001_{mate}_001_fastqc.html",sample=INDIVIDUALS_GERMAN2021,mate=["R1","R2"])
 
@@ -84,7 +94,7 @@ rule mapping_stats_german_all:
 
 rule prepare_german:
     input: "GERMAN2021/mapped/{sample}.bam"
-    output: "GERMAN2021/German/{sample}_mt.sam"
+    output: "GERMAN2021/{population}/{sample}_mt.sam"
     shell: "samtools view -h {input} > {output}"
 
 rule summarize_mapping_stats_german:
@@ -117,8 +127,11 @@ rule get_coverage_german_all:
     input: expand("GERMAN2021/mapped/{sample}.cov",sample=INDIVIDUALS_GERMAN2021)
 
 rule prepare_german_mt_all:
-     input: expand("GERMAN2021/German/{individual}_mt.sam", \
-            individual=INDIVIDUALS_GERMAN2021)
+     input: expand("GERMAN2021/{population}/{individual}_mt.sam", \
+                    zip, \
+                    individual=INDIVIDUALS_GERMAN2021, \
+                    population=[POPULATION_GERMAN2021[indv] for indv in INDIVIDUALS_GERMAN2021])
+
 
 ################################################################################
 ######### Generation of Egyptian MT Bam files from MT sequencing ###############
@@ -718,16 +731,20 @@ rule combined_egypt_contamination_file:
             "grep -v Sample >> {output} " 
 
 rule combined_german_haplogroup_file:
-    input: expand("haplocheck/results/GERMAN2021_German_{individual}/haplogroups/haplogroups.txt", \
-                    individual=INDIVIDUALS_GERMAN2021) 
+    input: expand("haplocheck/results/GERMAN2021_{population}_{individual}/haplogroups/haplogroups.txt", \
+                    zip, \
+                    individual=INDIVIDUALS_GERMAN2021, \
+                    population=[POPULATION_GERMAN2021[indv] for indv in INDIVIDUALS_GERMAN2021]) 
     output: "haplocheck/results/german_haplogroups.txt"
     shell: "cat {input[0]} | head -n 1 > {output}; " + \
             "cat haplocheck/results/GERMAN2021*/haplogroups/haplogroups.txt | " + \
             "grep -v SampleID >> {output} " 
 
 rule combined_german_contamination_file:
-    input: expand("haplocheck/results/GERMAN2021_German_{individual}/contamination/contamination.txt", \
-                    individual=INDIVIDUALS_GERMAN2021) 
+    input: expand("haplocheck/results/GERMAN2021_{population}_{individual}/contamination/contamination.txt", \
+                    zip, \
+                    individual=INDIVIDUALS_GERMAN2021, \
+                    population=[POPULATION_GERMAN2021[indv] for indv in INDIVIDUALS_GERMAN2021]) 
     output: "haplocheck/results/german_contaminations.txt"
     shell: "cat {input[0]} | head -n 1 > {output}; " + \
             "cat haplocheck/results/GERMAN2021*/contamination/contamination.txt | " + \
@@ -882,6 +899,23 @@ rule combined_mt_vcf_hgdp:
                     zip, \
                     individual=INDIVIDUALS_HGDP, \
                     population=[POPULATION_HGDP[indv] for indv in INDIVIDUALS_HGDP])
+    output: "control_mt/hgdp_mt.vcf.gz"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools merge -m none -O z {input} > {output}"
+
+rule combined_mt_fasta_german:
+    input: expand("GERMAN2021/{population}/fasta/{individual}_mt.fa", \
+                    zip, \
+                    individual=INDIVIDUALS_GERMAN2021, \
+                    population=[POPULATION_GERMAN2021[indv] for indv in INDIVIDUALS_GERMAN2021])
+    output: "control_mt/hgdp_mt.fa"
+    shell: "cat {input} > {output}"
+
+rule combined_mt_vcf_german:
+    input: expand("GERMAN2021/{population}/major_variants/{individual}_major.vcf.gz", \
+                    zip, \
+                    individual=INDIVIDUALS_GERMAN2021, \
+                    population=[POPULATION_GERMAN2021[indv] for indv in INDIVIDUALS_GERMAN2021])
     output: "control_mt/hgdp_mt.vcf.gz"
     conda: "envs/bcftools.yaml"
     shell: "bcftools merge -m none -O z {input} > {output}"
