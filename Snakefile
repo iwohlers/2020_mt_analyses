@@ -1,18 +1,22 @@
 # Getting sequencing reads mapped to the mitochondrium from the WGS HGDP data
 # set of (Bergström et al., 2020)
 # Before executing this workflow, run 
-# 'snakemake BERGSTROEM2020/populations_indiviuals.txt' to get the IDs and 
+# 'snakemake BERGSTROEM2020/populations_individuals.txt' to get the IDs and 
 # populations of the samples to be downloaded
 
 rule mt_sam_to_bam:
     input: "{dataset}/{population}/{individual}_mt.sam"
     output: "{dataset}/{population}/{individual}_mt.bam"
+    wildcard_constraints: 
+        dataset="[A-Z,0-9]+"
     conda: "envs/samtools.yaml"
     shell: "samtools view -S -b {input} > {output}"
 
 rule index_bam:
     input: "{dataset}/{population}/{individual}_mt.bam"
     output: "{dataset}/{population}/{individual}_mt.bam.bai"
+    wildcard_constraints: 
+        dataset="[A-Z,0-9]+"
     conda: "envs/samtools.yaml"
     shell: "samtools index {input}"
 
@@ -23,7 +27,7 @@ rule index_bam:
 
 rule get_indv_pop_german:
     input: "data/raw_german/GERMAN_populations_individuals.txt"
-    output: "GERMAN2021/populations_individuals.txt"
+    output: "GERMAN2021/populations_indiviuals.txt"
     shell: "cp {input} {output}"
 
 INDIVIDUALS_GERMAN2021 = []
@@ -255,6 +259,13 @@ with open("data/egyptian_samplenames.txt","r") as f_in:
         INDIVIDUALS_WOHLERS2020.append(indv)
         POPULATION_WOHLERS2020[indv] = "Egyptian"
 
+rule get_indv_pop_wohlers:
+    output: "WOHLERS2020/populations_individuals.txt"
+    run: 
+        with open(output[0],"w") as f_out:
+            for indv in INDIVIDUALS_WOHLERS2020:
+                f_out.write("Egyptian"+"\t"+indv+"\n")
+
 rule link_egyptian_bams:
     input: "/data/lied_egypt_genome/output_wgs/{sample}/{sample}.merged.mark_dups.bam",
            "/data/lied_egypt_genome/output_wgs/{sample}/{sample}.merged.mark_dups.bam.bai",
@@ -300,6 +311,13 @@ with open("data/filereport_read_run_PRJEB15464_tsv.txt","r") as f_in:
         POPULATION_SCHUENEMANN2017[indv] = "AncientEgyptian"
 
 INDIVIDUALS_SCHUENEMANN2017 = [x for x in INDIVIDUALS_SCHUENEMANN2017 if not x=="JK2911udg"]
+
+rule get_indv_pop_schuenemann:
+    output: "SCHUENEMANN2017/populations_individuals.txt"
+    run: 
+        with open(output[0],"w") as f_out:
+            for indv in INDIVIDUALS_SCHUENEMANN2017:
+                f_out.write("AncientEgyptian"+"\t"+indv+"\n")
 
 # Download the BAMs from ENA
 rule download_schuenemann_bam:
@@ -564,6 +582,19 @@ rule download_1000g_mt_all:
                     individual=INDIVIDUALS_1000G, \
                     population=[POPULATION_1000G[indv] for indv in INDIVIDUALS_1000G])
 
+rule pop_ind_file_1000g:
+    input: "data/igsr_30x GRCh38.tsv.tsv"
+    output: "1000G/populations_individuals.txt"
+    run:
+        with open(input[0],"r") as f_in, open(output[0],"w") as f_out:
+            for line in f_in:
+                if line[:3] == "url":
+                    continue
+                s = line.split("\t")
+                population = POP2POPCODE[s[6]]
+                individual = s[5]
+                f_out.write(population+"\t"+individual+"\n")
+
 
 ################################################################################
 ############################### Variant calling ################################
@@ -780,6 +811,8 @@ rule mutserve:
     output: "{dataset}/{population}/{individual}.vcf",
             "{dataset}/{population}/{individual}.txt",
             "{dataset}/{population}/{individual}_raw.txt"
+    wildcard_constraints: 
+        dataset="[A-Z,0-9]+"
     shell: "java -jar mutserve_v1.3.4/mutserve-1.3.4.jar analyse-local " +\
            " --input {input.bam} " + \
            " --level 0.01 " + \
@@ -798,6 +831,8 @@ rule select_major_haplogroup_variants:
     input: "{dataset}/{population}/{individual}.vcf",
            "{dataset}/{population}/{individual}.txt"
     output: "{dataset}/{population}/{individual}_major.vcf"
+    wildcard_constraints: 
+        dataset="[A-Z,0-9]+"
     run:
         major_variants = {}
         with open(input[1],"r") as f_in:
@@ -835,14 +870,18 @@ rule get_haplogroup_fasta_all:
 rule bgzip_and_tabix:
     input: "{dataset}/{population}/{individual}_major.vcf"
     output: "{dataset}/{population}/major_variants/{individual}_major.vcf.gz",
-            "{dataset}/{population}/major_variants/{individual}_major.vcf.gz.tbi",
+            "{dataset}/{population}/major_variants/{individual}_major.vcf.gz.tbi"
+    wildcard_constraints: 
+        dataset="[A-Z,0-9]+"
     conda: "envs/bcftools.yaml"
     shell: "cat {input} | bgzip > {output[0]}; tabix {output[0]}"
 
 rule bgzip_and_tabix_incl_minor:
     input: "{dataset}/{population}/{individual}.vcf"
     output: "{dataset}/{population}/all_variants/{individual}.vcf.gz",
-            "{dataset}/{population}/all_variants/{individual}.vcf.gz.tbi",
+            "{dataset}/{population}/all_variants/{individual}.vcf.gz.tbi"
+    wildcard_constraints: 
+        dataset="[A-Z,0-9]+"
     conda: "envs/bcftools.yaml"
     shell: "cat {input} | bgzip > {output[0]}; tabix {output[0]}"
 
@@ -858,6 +897,8 @@ rule vcf_to_fasta:
            vcf="{dataset}/{population}/major_variants/{individual}_major.vcf.gz",
            index="{dataset}/{population}/major_variants/{individual}_major.vcf.gz.tbi",
     output: "{dataset}/{population}/fasta/{individual}_mt.fa"
+    wildcard_constraints: 
+        dataset="[A-Z,0-9]+"
     conda: "envs/bcftools.yaml"
     shell: "bcftools consensus {input.vcf} < {input.ref} | " + \
            "sed 's/*/-/g' | " + \
@@ -1226,3 +1267,68 @@ rule run_haplocheck_1_3_2_egypt:
                                             "--format BAM "+\
                                             "--show-log "+\
                                             "--show-output "
+
+
+################################################################################
+############################# Some plotting ####################################
+################################################################################
+
+
+# The plot setting file within folder figures needs to be provided. It has the 
+# following header:
+# # dataset   population  individual  haplogroup  min_coverage    contamination   major_minor_same
+# There can be any number of lines in this file. Samples are then filtered from
+# all available samples. If a sample fulfills all criteria of any line of the 
+# file, then it is used for plotting. If columns are empty, they are not 
+# condidered. The samples included with all their haplogrep and haplocheck 
+# information will be written to file using this rule. 
+# Comments can be added to the file and should start with '#'.
+# The individual columns are as follows:
+# dataset: the dataset
+# population: the population; note that if a population is the same in different
+#             datasets, then samples from different datasets will be used; note 
+#             that for this, the population must be written identically though
+# individual: the sample ID relating to an individual; note that sample IDs 
+#             are assumed to be unique (across all data sets, populations etc.)
+# haplogroup: A specific haplogroup; allowed are also major haplogroups at any
+#             level, e.g. also M or M1 
+# min_coverage: The haplocheck-reported coverage can also be used for filtering
+# contamination: This can be either "YES", "NO" or "NA"; only one can be 
+#             provided per line
+# major_minor_same: Include only those samples that have major and minor 
+#             haplogroup identical according to haplocheck
+rule compile_for_plotting:
+    input: setting="figures/{plot_setting}.tsv",
+           ind_pop_1000G="1000G/populations_individuals.txt",
+           ind_pop_BERGSTROEM2020="BERGSTROEM2020/populations_indiviuals.txt",
+           ind_pop_EGYPT2020="EGYPT2020/populations_individuals.txt",
+           ind_pop_GERMAN2021="GERMAN2021/populations_individuals.txt", 
+           ind_pop_SCHUENEMANN2017="SCHUENEMANN2017/populations_individuals.txt", 
+           ind_pop_SUDAN2020="SUDAN2020/populations_individuals.txt",
+           ind_pop_WOHLERS2020="WOHLERS2020/populations_individuals.txt",
+           hcheck_1000G="figures/1000G_contaminations.txt",
+           hcheck_BERGSTROEM2020="figures/hgdp_contaminations.txt",
+           hcheck_EGYPT2020="figures/egypt_contaminations.txt",
+           hcheck_GERMAN2021="figures/german_contaminations.txt", 
+           hcheck_SCHUENEMANN2017="figures/schuenemann_contaminations.txt", 
+           hcheck_SUDAN2020="figures/sudan_contaminations.txt",
+           hcheck_WOHLERS2020="figures/wohlers_contaminations.txt"
+#           hcheck_1000G="haplocheck/results/1000G_contaminations.txt",
+#           hcheck_BERGSTROEM2020="haplocheck/results/hgdp_contaminations.txt",
+#           hcheck_EGYPT2020="haplocheck/results/egypt_contaminations.txt",
+#           hcheck_GERMAN2021="haplocheck/results/german_contaminations.txt", 
+#           hcheck_SCHUENEMANN2017="haplocheck/results/schuenemann_contaminations.txt", 
+#           hcheck_SUDAN2020="haplocheck/results/sudan_contaminations.txt",
+#           hcheck_WOHLERS2020="haplocheck/results/wohlers_contaminations.txt"
+    output: "figures/{plot_setting}/setting_haplocheck_data.tsv"
+    script: "scripts/select_for_plotting.py"
+
+# The haplogroups in "figures/{plot_setting}/hapsetting_{hap}.tsv" will be
+# plotted; if this file is empty, default is makrohaplogroup level
+rule plot_pop_haplogroup:
+    input: "figures/{plot_setting}/setting_haplocheck_data.tsv",
+           "figures/{plot_setting}/hapsetting_{hap}.txt"
+    output: "figures/{plot_setting}/haplogroup_distributions_{hap}.pdf",
+            "figures/{plot_setting}/haplogroup_frequencies_{hap}.pdf"
+    conda: "envs/r-ggpubr.yaml"
+    script: "scripts/haplogroup_distributions.R"
