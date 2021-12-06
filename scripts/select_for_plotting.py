@@ -75,7 +75,11 @@ with open(in_config_file,"r") as f_in, open(out_file,"w") as f_out:
         for sample_index in samples:
             sample = samples[sample_index]
             #print(dataset)
-            #print(sample)
+            # From the Sudanese data set, some samples have no haplocheck output
+            # Skip those
+            if not "haplocheck_line" in sample:
+                print("Sample "+sample["individual"]+" has no haplocheck output")
+                continue
             if not dataset == "" and not dataset == sample["dataset"]:
                 continue
             if not population == "" and not population == sample["population"]:

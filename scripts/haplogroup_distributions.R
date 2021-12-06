@@ -1,11 +1,12 @@
-#library(ggplot2)
-#library(ggpubr)
-#theme_set(theme_pubr())
+library(ggplot2)
+library(ggpubr)
+theme_set(theme_pubr())
 
 in_file <- snakemake@input[[1]]
 hap_file <- snakemake@input[[2]]
 out_file_dist <- snakemake@output[[1]]
 out_file_freq <- snakemake@output[[2]]
+out_file_counts <- snakemake@output[[3]]
 
 
 data <- read.delim(in_file,sep="\t", header=TRUE)
@@ -32,14 +33,18 @@ for(i in 1:length(haplogroups_to_plot)){
 data_pop_haplogroup$to_plot <- as.factor(data_pop_haplogroup$to_plot)
 
 data_plot <- data_pop_haplogroup[,c("population","to_plot")]
-summary(data_plot)
+#summary(data_plot)
+
+write.csv(file=out_file_counts,t(table(data_plot)))
 
 pdf(out_file_dist)
  
 # Make a stacked barplot
+counts <- t(table(data_plot))
+counts <- counts[,c("YRI","ESN","GWD","MSL","LWK","Sudanese","Egyptian","Mozabite","Bedouin","Palestinian","Druze","IBS","TSI","CEU","FIN","GBR","GIH","JPT","MXL")]
 cols = c("#A4A4A4","#222222","#A945FF","#1D72F5","#DF0101","#77CE61","#000000","#FF9326","#0089B2","#FDF060","#FFA6B2","#BFF217","#60D5FD","#CC1577","#F2B950","#7FB21D","#EC496F","#326397","#B26314","#027368","#610B5E","#F3C300","#875692","#F38400","#1D72F5","khaki2","darkturquoise","#bfbfbf","#E31A1C","#F2F3F4","#FF9326","#000000")
-barplot(t(table(data_plot)), col=cols, border="white", xlab="",las=2)
-legend("topright",fill=cols,rownames(t(table(data_plot))))
+barplot(counts, col=cols, border="white", xlab="",las=2, cex.names=0.5)
+legend("topright",fill=cols,rownames(t(table(data_plot))),cex=0.5)
 
 dev.off()
 
@@ -47,9 +52,10 @@ dev.off()
 pdf(out_file_freq)
 
 # Make a frequency plot 
-#data_for_freq <- as.data.frame(t(table(data_plot)))
+data_for_freq <- as.data.frame(counts)  
+# t(table(data_plot))
 
-#ggballoonplot(test, fill = "value")+
-#  scale_fill_viridis_c(option = "C")
+ggballoonplot(data_for_freq, fill = "value")+
+  scale_fill_viridis_c(option = "C")
 
 dev.off()

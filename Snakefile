@@ -1329,6 +1329,7 @@ rule plot_pop_haplogroup:
     input: "figures/{plot_setting}/setting_haplocheck_data.tsv",
            "figures/{plot_setting}/hapsetting_{hap}.txt"
     output: "figures/{plot_setting}/haplogroup_distributions_{hap}.pdf",
-            "figures/{plot_setting}/haplogroup_frequencies_{hap}.pdf"
+            "figures/{plot_setting}/haplogroup_frequencies_{hap}.pdf",
+            "figures/{plot_setting}/haplogroup_counts_{hap}.csv"
     conda: "envs/r-ggpubr.yaml"
     script: "scripts/haplogroup_distributions.R"
