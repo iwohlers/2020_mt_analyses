@@ -41,7 +41,7 @@ pdf(out_file_dist)
  
 # Make a stacked barplot
 counts <- t(table(data_plot))
-counts <- counts[,c("YRI","ESN","GWD","MSL","LWK","Sudanese","Egyptian","Mozabite","Bedouin","Palestinian","Druze","IBS","TSI","CEU","FIN","GBR","GIH","JPT","MXL")]
+#counts <- counts[,c("YRI","ESN","GWD","MSL","LWK","Sudanese","Egyptian","Mozabite","Bedouin","Palestinian","Druze","IBS","TSI","CEU","FIN","GBR","GIH","JPT","MXL")]
 cols = c("#A4A4A4","#222222","#A945FF","#1D72F5","#DF0101","#77CE61","#000000","#FF9326","#0089B2","#FDF060","#FFA6B2","#BFF217","#60D5FD","#CC1577","#F2B950","#7FB21D","#EC496F","#326397","#B26314","#027368","#610B5E","#F3C300","#875692","#F38400","#1D72F5","khaki2","darkturquoise","#bfbfbf","#E31A1C","#F2F3F4","#FF9326","#000000")
 barplot(counts, col=cols, border="white", xlab="",las=2, cex.names=0.5)
 legend("topright",fill=cols,rownames(t(table(data_plot))),cex=0.5)

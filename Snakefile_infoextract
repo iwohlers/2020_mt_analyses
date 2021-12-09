@@ -1,0 +1,82 @@
+
+INDIVIDUALS_GERMAN2021 = []
+POPULATION_GERMAN2021 = {}
+with open("GERMAN2021/populations_individuals.txt","r") as f_in:
+    for line in f_in:
+        pop,indv = line.strip("\n").split("\t")
+        INDIVIDUALS_GERMAN2021.append(indv)
+        POPULATION_GERMAN2021[indv] = pop
+
+rule bgzip_and_tabix:
+    input: "{dataset}/{population}/{individual}_major.vcf"
+    output: "{dataset}/{population}/major_variants/{individual}_major.vcf.gz",
+            "{dataset}/{population}/major_variants/{individual}_major.vcf.gz.tbi"
+    wildcard_constraints: 
+        dataset="[A-Z,0-9]+"
+    conda: "envs/bcftools.yaml"
+    shell: "cat {input} | bgzip > {output[0]}; tabix {output[0]}"
+
+rule bgzip_and_tabix_incl_minor:
+    input: "{dataset}/{population}/{individual}.vcf"
+    output: "{dataset}/{population}/all_variants/{individual}.vcf.gz",
+            "{dataset}/{population}/all_variants/{individual}.vcf.gz.tbi"
+    wildcard_constraints: 
+        dataset="[A-Z,0-9]+"
+    conda: "envs/bcftools.yaml"
+    shell: "cat {input} | bgzip > {output[0]}; tabix {output[0]}"
+
+rule combined_mt_vcf_germancentenarian:
+    input: expand("GERMAN2021/GermanCentenarian/major_variants/{individual}_major.vcf.gz", \
+                    individual=[indv for indv in INDIVIDUALS_GERMAN2021 if POPULATION_GERMAN2021[indv]=="GermanCentenarian"])
+    output: "centenarian_mt/GermanCentenarian_major_mt.vcf.gz"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools merge -m none -O z {input} > {output}"
+
+rule combined_mt_vcf_germancentenarian_all_variants:
+    input: expand("GERMAN2021/GermanCentenarian/all_variants/{individual}.vcf.gz", \
+                    individual=[indv for indv in INDIVIDUALS_GERMAN2021 if POPULATION_GERMAN2021[indv]=="GermanCentenarian"])
+    output: "centenarian_mt/GermanCentenarian_mt.vcf.gz"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools merge -m none -O z {input} > {output}"
+
+rule combined_mt_vcf_mmp:
+    input: expand("GERMAN2021/GermanMMP/major_variants/{individual}_major.vcf.gz", \
+                    individual=[indv for indv in INDIVIDUALS_GERMAN2021 if POPULATION_GERMAN2021[indv]=="GermanMMP"])
+    output: "mmp_mt/GermanMMP_major_mt.vcf.gz"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools merge -m none -O z {input} > {output}"
+
+rule combined_mt_vcf_mmp_all_variants:
+    input: expand("GERMAN2021/GermanMMP/all_variants/{individual}.vcf.gz", \
+                    individual=[indv for indv in INDIVIDUALS_GERMAN2021 if POPULATION_GERMAN2021[indv]=="GermanMMP"])
+    output: "mmp_mt/GermanMMP_mt.vcf.gz"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools merge -m none -O z {input} > {output}"
+
+rule combined_mt_vcf_focus_control:
+    input: expand("GERMAN2021/GermanControlFocus/major_variants/{individual}_major.vcf.gz", \
+                    individual=[indv for indv in INDIVIDUALS_GERMAN2021 if POPULATION_GERMAN2021[indv]=="GermanControlFocus"])
+    output: "focus_mt/GermanControlFocus_major_mt.vcf.gz"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools merge -m none -O z {input} > {output}"
+
+rule combined_mt_vcf_focus:
+    input: expand("GERMAN2021/GermanObesityFocus/major_variants/{individual}_major.vcf.gz", \
+                    individual=[indv for indv in INDIVIDUALS_GERMAN2021 if POPULATION_GERMAN2021[indv]=="GermanObesityFocus"])
+    output: "focus_mt/GermanObesityFocus_major_mt.vcf.gz"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools merge -m none -O z {input} > {output}"
+
+rule combined_mt_vcf_focus_control_all_variants:
+    input: expand("GERMAN2021/GermanControlFocus/all_variants/{individual}.vcf.gz", \
+                    individual=[indv for indv in INDIVIDUALS_GERMAN2021 if POPULATION_GERMAN2021[indv]=="GermanControlFocus"])
+    output: "focus_mt/GermanControlFocus_mt.vcf.gz"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools merge -m none -O z {input} > {output}"
+
+rule combined_mt_vcf_focus_all_variants:
+    input: expand("GERMAN2021/GermanObesityFocus/all_variants/{individual}.vcf.gz", \
+                    individual=[indv for indv in INDIVIDUALS_GERMAN2021 if POPULATION_GERMAN2021[indv]=="GermanObesityFocus"])
+    output: "focus_mt/GermanObesityFocus_mt.vcf.gz"
+    conda: "envs/bcftools.yaml"
+    shell: "bcftools merge -m none -O z {input} > {output}"

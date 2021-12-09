@@ -961,18 +961,6 @@ rule combined_mt_vcf_german:
     conda: "envs/bcftools.yaml"
     shell: "bcftools merge -m none -O z {input} > {output}"
 
-rule combined_mt_vcf_germancentenarian:
-    input: expand("GERMAN2021/GermanCentenarian/major_variants/{individual}_major.vcf.gz", \
-                    individual=[indv for indv in INDIVIDUALS_GERMAN2021 if POPULATION_GERMAN2021[indv]=="GermanCentenarian"])
-    output: "german_mt/GermanCentenarian_mt.vcf.gz"
-    conda: "envs/bcftools.yaml"
-    shell: "bcftools merge -m none -O z {input} > {output}"
-
-rule combined_mt_fasta_germancentenarian:
-    input: expand("GERMAN2021/GermanCentenarian/fasta/{individual}_mt.fa", \
-                    individual=[indv for indv in INDIVIDUALS_GERMAN2021 if POPULATION_GERMAN2021[indv]=="GermanCentenarian"])
-    output: "control_mt/GermanCentenarian_mt.fa"
-    shell: "cat {input} > {output}"
 
 
 ################################################################################
